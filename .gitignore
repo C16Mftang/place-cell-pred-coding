@@ -1,0 +1,5 @@
+*.ipynb
+/data/*
+/images/*
+/models/*
+/__pycache__/*
