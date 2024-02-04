@@ -129,7 +129,7 @@ def save_ratemaps(model, trajectory_generator, options, step, res=20, n_avg=None
     if not n_avg:
         n_avg = 1000 // options.sequence_length
     activations, rate_map, g, pos = compute_ratemaps(model, trajectory_generator,
-                                                     options, res=res, n_avg=n_avg)
+                                                     options, res=res, n_avg=n_avg, Ng=options.Ng)
     rm_fig = plot_ratemaps(activations, n_plots=len(activations))
     imdir = options.save_dir + "/" + options.run_ID
     imsave(imdir + "/" + str(step) + ".png", rm_fig)
