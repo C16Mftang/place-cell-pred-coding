@@ -15,13 +15,15 @@ from utils import generate_run_ID
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
+print(device)
+
 # Training hyperparameters to fully reproduce Sorscher et al. 2023
 class Options:
     pass
 options = Options()
 
 options.full_size = 50000
-options.n_epochs = 100          # number of training epochs
+options.n_epochs = 200          # number of training epochs
 options.n_steps = 1000          # number of batches in one epoch
 options.batch_size = 200        # number of trajectories per batch
 options.sequence_length = 20    # number of steps in trajectory
@@ -39,7 +41,7 @@ options.box_width = 2.2         # width of training environment
 options.box_height = 2.2        # height of training environment
 options.device = device
 options.save_dir = 'models/'
-options.data_source = 'pre'
+options.data_source = 'online'
 options.run_ID = generate_run_ID(options)
 options.decay_step_size = 5
 options.decay_rate = 1
@@ -63,3 +65,13 @@ if options.data_source == 'pre':
     trainer.train_batch(dataloader, n_epochs=options.n_epochs, save=True)
 else:
     trainer.train(n_epochs=options.n_epochs, n_steps=options.n_steps, save=True)
+
+plt.figure(figsize=(12,3))
+plt.subplot(121)
+plt.plot(trainer.err, c='black')
+
+plt.title('Decoding error (m)'); plt.xlabel('train step')
+plt.subplot(122)
+plt.plot(trainer.loss, c='black');
+plt.title('Loss'); plt.xlabel('train step');
+plt.savefig(os.path.join(options.save_dir, options.run_ID)+'/loss')
