@@ -23,13 +23,13 @@ class Options:
 options = Options()
 
 options.full_size = 50000
-options.n_epochs = 200          # number of training epochs
-options.n_steps = 1000          # number of batches in one epoch
-options.batch_size = 200        # number of trajectories per batch
+options.n_epochs = 500          # number of training epochs
+options.n_steps = 2000          # number of batches in one epoch
+options.batch_size = 100        # number of trajectories per batch
 options.sequence_length = 20    # number of steps in trajectory
 options.learning_rate = 1e-4    # gradient descent learning rate
 options.Np = 512                # number of place cells
-options.Ng = 4096               # number of grid cells
+options.Ng = 2048               # number of grid cells
 options.place_cell_rf = 0.12    # width of place cell center tuning curve (m)
 options.surround_scale = 2      # if DoG, ratio of sigma2^2 to sigma1^2
 options.RNN_type = 'RNN'        # RNN or LSTM
@@ -50,7 +50,7 @@ options.decay_rate = 1
 place_cells = PlaceCells(options)
 model = RNN(options, place_cells).to(device)
 trajectory_generator = TrajectoryGenerator(options, place_cells)
-trainer = Trainer(options, model, trajectory_generator)
+trainer = Trainer(options, model, trajectory_generator, restore=False)
 
 if options.data_source == 'pre':
     path = f'data/trajectory_{options.full_size}_{options.sequence_length}_{options.Np}.npz'
