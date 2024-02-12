@@ -6,6 +6,8 @@ import scipy
 import scipy.stats
 from imageio import imsave
 import cv2
+import utils
+import torch
 
 
 def concat_images(images, image_width, spacer_size):
@@ -67,7 +69,16 @@ def plot_ratemaps(activations, n_plots, cmap='jet', smooth=True, width=16):
     return rm_fig
 
 
-def compute_ratemaps(model, trajectory_generator, options, res=20, n_avg=None, Ng=512, idxs=None):
+def compute_ratemaps(
+        model, 
+        trajectory_generator,  
+        options, 
+        res=20, 
+        n_avg=None, 
+        Ng=512, 
+        idxs=None,
+        pc=False,
+    ):
     '''Compute spatial firing fields'''
 
     if not n_avg:
@@ -86,7 +97,13 @@ def compute_ratemaps(model, trajectory_generator, options, res=20, n_avg=None, N
     for index in range(n_avg):
         # pos_batch: [batch_size, seq_len, 2]
         inputs, pos_batch, _ = trajectory_generator.get_test_batch()
-        g_batch = model.g(inputs).detach().cpu().numpy() # [seq_len, batch_size, Ng]
+
+        if pc:
+            # when model is tpc, we need a initial state
+            init_state = inputs[1] @ trajectory_generator.get_hidden_projector()
+            g_batch = model.g(inputs[0], init_state).detach().cpu().numpy() # [seq_len, batch_size, Ng]
+        else:
+            g_batch = model.g(inputs).detach().cpu().numpy() # [seq_len, batch_size, Ng]
         
         pos_batch = np.reshape(pos_batch.cpu(), [-1, 2])
 
@@ -125,11 +142,12 @@ def compute_ratemaps(model, trajectory_generator, options, res=20, n_avg=None, N
     return activations, rate_map, g, pos
 
 
-def save_ratemaps(model, trajectory_generator, options, step, res=20, n_avg=None):
+def save_ratemaps(model, trajectory_generator, options, step, res=20, n_avg=None, pc=True):
     if not n_avg:
         n_avg = 1000 // options.sequence_length
     activations, rate_map, g, pos = compute_ratemaps(model, trajectory_generator,
-                                                     options, res=res, n_avg=n_avg, Ng=options.Ng)
+                                                     options, res=res, n_avg=n_avg, 
+                                                     Ng=options.Ng, pc=pc)
     rm_fig = plot_ratemaps(activations, n_plots=len(activations))
     imdir = options.save_dir + "/" + options.run_ID
     imsave(imdir + "/" + str(step) + ".png", rm_fig)
