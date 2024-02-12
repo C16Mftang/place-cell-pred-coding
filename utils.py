@@ -3,6 +3,9 @@ import torch.nn as nn
 import matplotlib.pyplot as plt
 import os
 import time
+import predictive_coding as pc
+import torch.optim as optim
+import torch.nn.functional as F
 
 class Tanh(nn.Module):
     def forward(self, inp):
@@ -117,3 +120,32 @@ def generate_run_ID(options):
     run_ID = run_ID.replace('.', '')
 
     return run_ID
+
+def ce_loss(output, _target):
+    pred = F.softmax(output, dim=-1)
+    return -(_target * torch.log(pred)).sum(-1).mean()
+
+def pc_inference(model, inputs, options):
+    # print('Predicting...')
+    init_tester = pc.PCTrainer(
+        model.init_model,
+        T=200,
+        update_x_at='all',
+        optimizer_x_fn=optim.SGD,
+        optimizer_x_kwargs={"lr": 1e-2},
+        update_p_at='never',
+        plot_progress_at=[],
+    )
+
+    init_tester.train_on_batch(
+        inputs=torch.zeros(options.batch_size, options.Ng).to(options.device),
+        loss_fn=ce_loss,
+        loss_fn_kwargs={"_target": inputs[1]}, # p0
+        is_log_progress=False,
+        is_return_results_every_t=False,
+    )
+
+    init_state = model.init_model[1].get_x().detach()
+    pred = model.predict(inputs[0], init_state)
+
+    return init_state, pred
