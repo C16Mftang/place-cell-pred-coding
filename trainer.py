@@ -135,10 +135,6 @@ class Trainer(object):
                 # Log error rate to progress bar
                 # tbar.set_description('Error = ' + str(np.int(100*err)) + 'cm')
 
-                print('Epoch: {}/{}. Step {}/{}. Loss: {}. Err: {}cm'.format(
-                    epoch_idx, n_epochs, step_idx, n_steps,
-                    np.round(loss, 6), np.round(100 * err, 2)))
-
                 # # inspect recurrent weights
                 # rec = (self.model.RNN.weight_hh_l0)
                 # # l2 norm of recurrent weights
@@ -151,6 +147,10 @@ class Trainer(object):
                 # # gradient norm
                 # grad_norm = torch.norm(rec.grad.data)
                 # print('Gradient norm: {}'.format(grad_norm))
+
+            print('Epoch: {}/{}. Loss: {}. Err: {}cm'.format(
+                    epoch_idx, n_epochs,
+                    np.round(loss, 6), np.round(100 * err, 2)))
 
             # Update learning rate
             self.scheduler.step()
