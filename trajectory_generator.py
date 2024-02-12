@@ -10,6 +10,11 @@ class TrajectoryGenerator(object):
         self.options = options
         self.place_cells = place_cells
 
+    def get_hidden_projector(self):
+        g_r = torch.Generator()
+        g_r.manual_seed(1)
+        return torch.randn((self.options.Np, self.options.Ng), generator=g_r).to(self.options.device)
+
     def avoid_wall(self, position, hd, box_width, box_height):
         '''
         Compute distance and angle to nearest wall
