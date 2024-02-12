@@ -3,6 +3,7 @@
 /images/*
 /models/*
 /__pycache__/*
+predictive_coding/__pycache__/*
 /results/*
 *.sh
 /output/*
