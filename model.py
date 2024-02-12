@@ -4,6 +4,116 @@ import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
 import utils as utils
+import predictive_coding as pc
+
+# a utility model for unsupervised PC training
+class Bias(nn.Module):
+    def __init__(self, num_features):
+        super().__init__()
+        self.bias = nn.Parameter(torch.ones(num_features))
+
+    def forward(self, x):
+        # x must be a zero tensor
+        return self.bias + x
+
+class tPCLayer(nn.Module):
+    def __init__(self, size_in, size_hidden):
+        super(tPCLayer, self).__init__()
+        # Initialize the Win and Wr linear layers according to the specified shapes
+        if size_in > 0:
+            self.Win = nn.Linear(size_in, size_hidden, bias=False)
+        self.Wr = nn.Linear(size_hidden, size_hidden, bias=False)
+        # determine whether there is an external input
+        self.is_in = True if size_in > 0 else False
+
+    def forward(self, inputs):
+        # input: a tuple of two tensors (hidden (from the previous time step), velocity input)
+        # Compute Win(input) + Wr(hidden) and return the result
+        return self.Win(inputs[1]) + self.Wr(inputs[0]) if self.is_in else self.Wr(inputs[0])
+
+class tPC(nn.Module):
+    def __init__(self, options):
+        super(tPC, self).__init__()
+        self.size_in = options.size_in
+        self.Ng = options.Ng
+        self.Np = options.Np
+        if options.activation == 'tanh':
+            self.activation = nn.Tanh()
+        elif options.activation == 'relu':
+            self.activation = nn.ReLU()
+        self.softmax = torch.nn.Softmax(dim=-1)
+
+        # the decoder from hidden state to place cell activations
+        self.decoder = nn.Sequential(
+            nn.Linear(self.Ng, self.Np, bias=False),
+            pc.PCLayer(),
+            self.softmax,
+        )
+
+        # the unsupervised model at initialization of sequences
+        # self.init_model = nn.Sequential(
+        #     Bias(self.Ng),
+        #     pc.PCLayer(),
+        #     self.decoder,
+        # )
+
+        # the recurrent layer
+        self.rec_layer = nn.Sequential(
+            tPCLayer(self.size_in, self.Ng),
+            pc.PCLayer(),
+            self.activation,
+        )
+
+        self.tpc = nn.Sequential(
+            self.rec_layer,
+            self.decoder,
+        )
+
+        self.options = options
+
+    def forward(self, inputs):
+        '''inputs: a tuple of two tensors (hidden (from the previous time step), velocity input)'''
+        return self.tpc(inputs)
+
+    def g(self, inputs, init_state):
+        '''
+        Compute grid cell activations.
+        To get initial state, we first need to run inference on decoder,
+        and extract the hidden state from the decoder.
+        Here we assume this has already been done externally.
+
+        Args:
+            inputs: Batch of 2d velocity inputs with shape [sequence_length, batch_size, 2].
+            init_state: Initial hidden state, with shape [batch_size, Ng], 
+                which has been inferred from the decoder externally.
+        Returns: 
+            g: Batch of grid cell activations with shape [sequence_length, batch_size, Ng].
+        '''
+        gcs = torch.zeros((self.options.sequence_length, self.options.batch_size, self.options.Ng))
+        g = init_state
+        for k in range(self.options.sequence_length):
+            v = inputs[k]
+            g = self.tpc[0]((g, v)) # infer by forward pass through tPCLayer
+            gcs[k] = self.activation(g)
+        return gcs.to(self.options.device)
+
+    def predict(self, inputs, init_state):
+        '''
+        Predict place cell code.
+        Args:
+            inputs: Batch of 2d velocity inputs with shape [sequence_length, batch_size, 2].
+            init_state: Initial hidden state, with shape [batch_size, Ng], 
+                which has been inferred from the decoder externally.
+
+        Returns: 
+            place_preds: Predicted place cell activations with shape 
+                [batch_size, sequence_length, Np].
+        '''
+        place_preds = torch.zeros((self.options.sequence_length, self.options.batch_size, self.options.Np))
+        gcs = self.g(inputs, init_state)
+        for k in range(self.options.sequence_length):
+            place_preds[k] = self.decoder(gcs[k])
+        return place_preds
 
 class RNN(torch.nn.Module):
     def __init__(self, options, place_cells):
