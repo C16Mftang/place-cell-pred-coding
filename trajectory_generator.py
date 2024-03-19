@@ -177,3 +177,100 @@ class TrajectoryGenerator(object):
         inputs = (v, init_actv)
 
         return (inputs, pos, place_outputs)
+
+
+class TrajectoryGenerator1D(object):
+
+    def __init__(self, options, place_cell):
+        self.options = options
+        self.place_cell = place_cell
+
+    def avoid_wall(self, position):
+        '''
+        Avoid the wall by reflecting the position when the agent hits the wall
+
+        Inputs:
+            position: (batch_size) tensor of the CURRENT position of the agent
+            dt: float, time step
+
+        Outputs:
+            position: (batch_size) tensor of the position of the agent after reflection
+        '''
+        track_length = self.place_cell.track_length
+        dt = self.options.dt
+        # check if the agent hits the wall
+        hit_wall = (position.abs() >= track_length / 2)
+        # if the agent hits the wall, current position should be border - the amount of overshoot
+        sign = torch.sign(position[hit_wall])
+        position[hit_wall] = sign * track_length / 2 - (position[hit_wall] - sign * track_length / 2)
+        return position
+
+    def generate_trajectory(self, seed=None):
+        '''
+        Generate a batch of trajectories
+
+        Inputs:
+            batch_size: int, number of trajectories to generate
+            seq_len: int, length of each trajectory
+
+        Outputs:
+            traj: (batch_size, seq_len) tensor of the generated trajectories
+        '''
+        if seed:
+            torch.manual_seed(seed)
+        track_length = self.place_cell.track_length
+        batch_size = self.options.batch_size
+        seq_len = self.options.seq_len
+        dt = self.options.dt
+        # initialize position; add 2 to seq_len to account for initial and final positions
+        # we will discard the final position later
+        position = torch.zeros(batch_size, seq_len+2)
+
+        # random initial position; between -track_length/2 and track_length/2
+        position[:, 0] = torch.rand(batch_size) * track_length - track_length / 2
+
+        # IMPORTANT: For nonperiodic boundary, using a positive velocity will like to result in bouncing back and forth near a wall
+        velocity = torch.rand((batch_size, seq_len+1)) * 2 - 1
+
+        for t in range(seq_len + 1):
+            v = velocity[:, t]
+            position[:, t+1] = position[:, t] + v * dt
+            # for non-periodic boundary, check if the updated position hits the wall, if so reflect the position
+            if not self.options.periodic:
+                position[:, t+1] = self.avoid_wall(position[:, t+1])
+        
+        # for periodic boundary, wrap the position
+        if self.options.periodic:
+            position = (position + track_length / 2) % track_length - track_length / 2
+
+        traj = {}
+        traj['position'] = position[:, 1:-1].to(self.options.device) # discard initial and final positions, [batch_size, seq_len]
+        traj['velocity'] = velocity[:, 1:].to(self.options.device) # discard initial velocity, [batch_size, seq_len]
+        traj['init_position'] = position[:, 0].unsqueeze(-1).to(self.options.device)# [batch_size, 1]
+
+        return traj
+
+    def get_batch_data(self, seed=None):
+        '''
+        Generate a batch of trajectories and their corresponding place cell activations
+
+        Outputs:
+            input: (velocity, init_activation), where velocity is a (batch_size, seq_len, 1) tensor of the velocity of the agent
+                and init_activation is a (batch_size, Np) tensor of the activation of the place cells at the initial position
+            activation: (batch_size, seq_len, Np) tensor of the activation of the place cells
+            position: (batch_size, seq_len, 1) tensor of the generated 1d trajectories
+        '''
+        traj = self.generate_trajectory(seed)
+        # unsqueeze the position to match the shape of the place cell activations
+        activation = self.place_cell.get_activation(traj['position'].unsqueeze(-1))
+        init_activation = self.place_cell.get_activation(traj['init_position'].unsqueeze(-1))
+        # unsqueeze the velocity to have 1 in the last dimension
+        input = (traj['velocity'].unsqueeze(-1), init_activation.squeeze())
+        return (input, activation, traj['position'].unsqueeze(-1))
+
+    def get_generator(self, seed=None):
+        while True:
+            yield self.get_batch_data(seed)
+
+    def get_test_batch(self, seed=None):
+        return self.get_batch_data(seed)

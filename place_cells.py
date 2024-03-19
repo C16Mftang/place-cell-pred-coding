@@ -132,3 +132,62 @@ class PlaceCells(object):
         Cmean = np.roll(np.roll(Cmean, res//2, axis=0), res//2, axis=1)
 
         return Cmean
+
+class PlaceCells1D(object):
+
+    def __init__(self, options):
+        self.Np = options.Np
+        self.track_length = options.track_length
+        self.sigma = options.place_cell_rf
+        self.seed = options.plce_cell_seed
+        self.device = options.device
+        self.periodic = options.periodic
+
+        # Randomly initialize place cell centers: 1d array of shape [Np].
+        np.random.seed(self.seed)
+        # self.centers = torch.tensor(np.random.uniform(-self.track_length/2, self.track_length/2, self.Np))
+        self.centers = torch.tensor(np.linspace(-self.track_length/2, self.track_length/2, self.Np))
+        self.centers = self.centers.to(self.device)
+
+    def get_activation(self, pos):
+        '''
+        Get the activation of the place cells given the position of the agent
+
+        Inputs:
+            pos: (batch_size, seq_len, 1) tensor of the position of the agent
+
+        Outputs:
+            activation: (batch_size, seq_len, Np) tensor of the activation of the place cells
+        '''
+
+        # Compute distance between position and place cell centers: [batch_size, sequence_length, Np].
+        d = torch.abs(pos[:, :, None, :] - self.centers[None, None, :, None]).float().squeeze(-1)
+        if self.periodic:
+            d = torch.min(d, self.track_length - d)
+
+        if self.sigma is not None:
+            # use gaussian activation
+            activation = torch.exp(-d**2 / (2 * self.sigma**2))
+        else:
+            # use one hot encoding
+            min_vals, _ = torch.min(d, dim=-1, keepdim=True)
+            activation = (d == min_vals).float()
+
+        return activation
+
+    def get_nearest_cell_pos(self, activation, k=3):
+        '''
+        Decode position using centers of k maximally active place cells.
+        
+        Args: 
+            activation: Place cell activations of shape [batch_size, sequence_length, Np].
+            k: Number of maximally active place cells with which to decode position.
+
+        Returns:
+            pred_pos: Predicted 2d position with shape [batch_size, sequence_length, 1].
+        '''
+        # top-k place cells along the last dimension; idx: [batch_size, sequence_length, k]
+        _, idxs = torch.topk(activation, k=k)
+        # centers[idxs] will slice the centers along the last dimension using the indices in idxs: [batch_size, sequence_length, k]
+        pred_pos = self.centers[idxs].mean(-1, keepdim=True)
+        return pred_pos
