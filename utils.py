@@ -3,9 +3,24 @@ import torch.nn as nn
 import matplotlib.pyplot as plt
 import os
 import time
+import json
 import predictive_coding as pc
 import torch.optim as optim
 import torch.nn.functional as F
+
+class Softmax(nn.Module):
+    def forward(self, inp):
+        return torch.softmax(inp, dim=-1)
+
+    def deriv(self, inp):
+        # Compute the softmax output
+        soft = self.forward(inp)
+        # Initialize a tensor for the derivative, with the same shape as the softmax output
+        s = soft.unsqueeze(-2)  # Add a dimension for broadcasting
+        identity = torch.eye(s.size(-1)).unsqueeze(0).to(inp.device)  
+        # The diagonal contains s_i * (1 - s_i) and off-diagonal s_i * (-s_j)
+        deriv = identity * s - s * s.transpose(-1, -2) # shape (batch_size, N, N)
+        return deriv
 
 class Tanh(nn.Module):
     def forward(self, inp):
@@ -13,10 +28,6 @@ class Tanh(nn.Module):
 
     def deriv(self, inp):
         return 1.0 - torch.tanh(inp) ** 2.0
-
-    # run the following if this class inherits object.
-    # def __call__(self, inp):
-    #     return self.forward(inp)
 
 class ReLU(nn.Module):
     def forward(self, inp):
@@ -149,3 +160,20 @@ def pc_inference(model, inputs, options):
     pred = model.predict(inputs[0], init_state)
 
     return init_state, pred
+
+def serialize_complex_val(val):
+    """Custom method to serialize complex objects."""
+    if isinstance(val, nn.Module):
+        return {"__nn_module__": val.__class__.__name__}
+    else:
+        return val
+
+def save_options_to_json(options, filename='options.json'):
+    options_dict = {}
+    for attr in dir(options):
+        if not attr.startswith('__'):
+            val = getattr(options, attr)
+            options_dict[attr] = serialize_complex_val(val)
+    
+    with open(filename, 'w') as f:
+        json.dump(options_dict, f, indent=4, default=str)
