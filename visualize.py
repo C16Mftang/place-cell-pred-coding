@@ -8,7 +8,7 @@ from imageio import imsave
 import cv2
 import utils
 import torch
-
+import os
 
 def concat_images(images, image_width, spacer_size):
     """ Concat image horizontally with spacer """
@@ -142,6 +142,61 @@ def compute_ratemaps(
     return activations, rate_map, g, pos
 
 
+# get grid cell rate maps
+def compute_1d_ratemaps(
+        model, 
+        trainer,
+        trajectory_generator,  
+        options, 
+        res=20, 
+        n_avg=None, 
+        Ng=512, 
+        idxs=None,
+    ):
+    '''Compute spatial firing fields'''
+
+    g = np.zeros([n_avg, options.batch_size * options.seq_len, Ng])
+    pos = np.zeros([n_avg, options.batch_size * options.seq_len, 1])
+
+    activations = np.zeros([Ng, res]) 
+    counts  = np.zeros(res)
+
+    for index in range(n_avg):
+        # pos_batch: [batch_size, seq_len, 2]
+        inputs, _, pos_batch = trajectory_generator.get_test_batch()
+
+        # g_batch = model.g(inputs).detach().cpu().numpy().reshape(-1, Ng) # [seq_len*batch_size, Ng]
+        _, g_batch = trainer.predict(inputs)
+        g_batch = g_batch.detach().cpu().numpy().reshape(-1, Ng) # [seq_len*batch_size, Ng]
+        
+        pos_batch = pos_batch.cpu().numpy().reshape(-1, 1) # [seq_len*batch_size, 1]
+
+        # g_batch records the activations of all grid cells across all points in all trajectories in this batch
+        g_batch = g_batch.reshape(-1, Ng) # [seq_len*batch_size, Ng]
+        
+        g[index] = g_batch
+        pos[index] = pos_batch
+
+        # Convert position (-1, 1) to indices (0, res)
+        pos_batch = (pos_batch + options.track_length/2) / (options.track_length) * res
+
+        for i in range(options.batch_size*options.seq_len):
+            x = pos_batch[i, 0]
+            if x >=0 and x < res:
+                counts[int(x)] += 1
+                activations[:, int(x)] += g_batch[i, :]
+
+    # make it a density map
+    for k in range(res):
+        if counts[k] > 0:
+            activations[:, k] /= counts[k]
+                
+    g = g.reshape([-1, Ng])
+    pos = pos.reshape([-1, 1])
+    rate_map = activations.reshape(Ng, -1)
+
+    return rate_map
+
 def save_ratemaps(model, trajectory_generator, options, step, res=20, n_avg=None, pc=True):
     if not n_avg:
         n_avg = 1000 // options.sequence_length
@@ -175,3 +230,73 @@ def save_autocorr(sess, model, save_name, trajectory_generator, step, flags):
     out = utils.get_scores_and_plot(
                 latest_epoch_scorer, res['pos_xy'], res['bottleneck'],
                 imdir, filename)
+
+def plot_1d_performance(place_cell, generator, options, trainer):
+    # check if the model generalizes well
+    inputs, pc_outputs, pos = generator.get_test_batch()
+    pos = pos.cpu()[:5]
+    pred_pos = place_cell.get_nearest_cell_pos(trainer.predict(inputs)[0]).cpu()[:5]
+    centers = place_cell.centers.cpu()
+    l = options.track_length/2
+
+    fig, axes = plt.subplots(5, 1, figsize=(13, 3), sharex=True)
+
+    # Colormap for the time points in each trajectory
+    time_cmap = plt.cm.Blues
+    test_cmap = plt.cm.Reds
+
+    # Normalize the time points for the colormap
+    norm = plt.Normalize(0, pos.shape[1])
+
+    # Plot each trajectory in its own subplot
+    for i, (ax, traj) in enumerate(zip(axes, pos)):
+        ax.plot(centers, torch.zeros_like(centers), 'o', color='gray', markersize=2, alpha=0.2)
+        for j, point in enumerate(traj):
+            ax.plot(traj[j], 0, 'o', color=time_cmap(norm(j)), markersize=5, alpha=0.6)
+            ax.plot(pred_pos[i, j], 0, 'x', color=test_cmap(norm(j)), markersize=8)
+        
+        if i == 0:
+            # add a legend
+            ax.plot(-l, 0.05, 'o', color=time_cmap(norm(pos.shape[1]-1)), markersize=5, alpha=0.6)
+            ax.text(-l+l/20, 0.05, 'True Position', va='center', ha='left')
+            ax.plot(-l, -0.05, 'x', color=test_cmap(norm(pos.shape[1]-1)),markersize=8)
+            ax.text(-l+l/20, -0.05, 'Predicted Position', va='center', ha='left')
+
+        
+        ax.set_xlim(-l-l/20, l+l/20)
+        ax.set_ylim(-0.1, 0.1)
+        ax.get_yaxis().set_visible(False)  # Hide the y-axis
+        # ax.get_xaxis().set_visible(False)  # Hide the x-axis
+
+    fig.text(0.5, 0.01, 'Track Position', ha='center', va='center')
+    fig.suptitle('Separate Trajectories on a 1D Track')
+
+    # add a colorbar for the time points
+    cbar_ax = fig.add_axes([0.92, 0.15, 0.01, 0.7])
+    sm = plt.cm.ScalarMappable(cmap=time_cmap, norm=norm)
+    sm.set_array([])
+    fig.colorbar(sm, cax=cbar_ax, label='Time step')
+
+    plt.savefig(os.path.join(options.save_dir, '1d_performance.png'))
+
+def plot_1d_ratemaps(rate_map, options):
+    n_col = 4
+    fig, ax = plt.subplots(n_col, options.Ng//n_col, figsize=(2*options.Ng//n_col, n_col))
+    for i, ax in enumerate(ax.flatten()):
+        r = (rate_map[i] - rate_map[i].min()) / (rate_map[i].max() - rate_map[i].min())
+        ax.plot(np.linspace(-options.track_length/2, options.track_length/2, 200), r, lw=3)
+        # set overall x and y labels
+        if i == 0:
+            ax.set_ylabel('Activation')
+            ax.set_title(f'Grid Cell {i+1}')
+        else:
+            ax.get_yaxis().set_visible(False)
+            
+        if i == options.Ng // n_col * (n_col - 1):
+            ax.set_xlabel('Position')
+        else:
+            ax.get_xaxis().set_visible(False)
+
+        ax.set_xticks([-options.track_length/2, 0, options.track_length/2])
+        ax.set_xticklabels([-options.track_length/2, 0, options.track_length/2])
+    plt.savefig(os.path.join(options.save_dir, '1d_ratemaps.png'))
