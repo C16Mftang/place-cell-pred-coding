@@ -9,6 +9,7 @@ import cv2
 import utils
 import torch
 import os
+import model as m
 
 def concat_images(images, image_width, spacer_size):
     """ Concat image horizontally with spacer """
@@ -71,13 +72,13 @@ def plot_ratemaps(activations, n_plots, cmap='jet', smooth=True, width=16):
 
 def compute_ratemaps(
         model, 
+        trainer,
         trajectory_generator,  
         options, 
         res=20, 
         n_avg=None, 
         Ng=512, 
         idxs=None,
-        pc=False,
     ):
     '''Compute spatial firing fields'''
 
@@ -95,20 +96,16 @@ def compute_ratemaps(
     counts  = np.zeros([res, res])
 
     for index in range(n_avg):
-        # pos_batch: [batch_size, seq_len, 2]
-        inputs, pos_batch, _ = trajectory_generator.get_test_batch()
+        # pos_batch: [batch_size, sequence_length, 2]
+        inputs, _, pos_batch = trajectory_generator.get_test_batch()
 
-        if pc:
-            # when model is tpc, we need a initial state
-            init_state = inputs[1] @ trajectory_generator.get_hidden_projector()
-            g_batch = model.g(inputs[0], init_state).detach().cpu().numpy() # [seq_len, batch_size, Ng]
+        if isinstance(model, m.TemporalPCN):
+            _, g_batch = trainer.predict(inputs)
+            g_batch = g_batch.detach().cpu().numpy().reshape(-1, Ng) # [sequence_length*batch_size, Ng]
         else:
-            g_batch = model.g(inputs).detach().cpu().numpy() # [seq_len, batch_size, Ng]
+            g_batch = model.g(inputs).detach().cpu().numpy().reshape(-1, Ng) # [sequence_length*batch_size, Ng]
         
-        pos_batch = np.reshape(pos_batch.cpu(), [-1, 2])
-
-        # g_batch records the activations of all grid cells across all points in all trajectories in this batch
-        g_batch = g_batch[:,:,idxs].reshape(-1, Ng) # [seq_len*batch_size, Ng]
+        pos_batch = np.reshape(pos_batch.cpu().detach().numpy(), [-1, 2])
         
         g[index] = g_batch
         pos[index] = pos_batch
@@ -139,7 +136,7 @@ def compute_ratemaps(
     # activations = scipy.stats.binned_statistic_2d(pos[:,0], pos[:,1], g.T, bins=res)[0]
     rate_map = activations.reshape(Ng, -1)
 
-    return activations, rate_map, g, pos
+    return activations
 
 
 # get grid cell rate maps
@@ -155,24 +152,24 @@ def compute_1d_ratemaps(
     ):
     '''Compute spatial firing fields'''
 
-    g = np.zeros([n_avg, options.batch_size * options.seq_len, Ng])
-    pos = np.zeros([n_avg, options.batch_size * options.seq_len, 1])
+    g = np.zeros([n_avg, options.batch_size * options.sequence_length, Ng])
+    pos = np.zeros([n_avg, options.batch_size * options.sequence_length, 1])
 
     activations = np.zeros([Ng, res]) 
     counts  = np.zeros(res)
 
     for index in range(n_avg):
-        # pos_batch: [batch_size, seq_len, 2]
+        # pos_batch: [batch_size, sequence_length, 2]
         inputs, _, pos_batch = trajectory_generator.get_test_batch()
 
-        # g_batch = model.g(inputs).detach().cpu().numpy().reshape(-1, Ng) # [seq_len*batch_size, Ng]
+        # g_batch = model.g(inputs).detach().cpu().numpy().reshape(-1, Ng) # [sequence_length*batch_size, Ng]
         _, g_batch = trainer.predict(inputs)
-        g_batch = g_batch.detach().cpu().numpy().reshape(-1, Ng) # [seq_len*batch_size, Ng]
+        g_batch = g_batch.detach().cpu().numpy().reshape(-1, Ng) # [sequence_length*batch_size, Ng]
         
-        pos_batch = pos_batch.cpu().numpy().reshape(-1, 1) # [seq_len*batch_size, 1]
+        pos_batch = pos_batch.cpu().numpy().reshape(-1, 1) # [sequence_length*batch_size, 1]
 
         # g_batch records the activations of all grid cells across all points in all trajectories in this batch
-        g_batch = g_batch.reshape(-1, Ng) # [seq_len*batch_size, Ng]
+        g_batch = g_batch.reshape(-1, Ng) # [sequence_length*batch_size, Ng]
         
         g[index] = g_batch
         pos[index] = pos_batch
@@ -180,7 +177,7 @@ def compute_1d_ratemaps(
         # Convert position (-1, 1) to indices (0, res)
         pos_batch = (pos_batch + options.track_length/2) / (options.track_length) * res
 
-        for i in range(options.batch_size*options.seq_len):
+        for i in range(options.batch_size*options.sequence_length):
             x = pos_batch[i, 0]
             if x >=0 and x < res:
                 counts[int(x)] += 1
@@ -235,7 +232,7 @@ def plot_1d_performance(place_cell, generator, options, trainer):
     # check if the model generalizes well
     inputs, pc_outputs, pos = generator.get_test_batch()
     pos = pos.cpu()[:5]
-    pred_pos = place_cell.get_nearest_cell_pos(trainer.predict(inputs)[0]).cpu()[:5]
+    pred_pos = place_cell.get_nearest_cell_pos(trainer.predict(inputs[:5])[0]).cpu()
     centers = place_cell.centers.cpu()
     l = options.track_length/2
 
@@ -279,6 +276,25 @@ def plot_1d_performance(place_cell, generator, options, trainer):
 
     plt.savefig(os.path.join(options.save_dir, '1d_performance.png'))
 
+def plot_2d_performance(place_cell, generator, options, trainer):
+
+    inputs, pc_outputs, pos = generator.get_test_batch()
+    pos = pos.cpu()[:5]
+    pred_pos = place_cell.get_nearest_cell_pos(trainer.predict(inputs[:5])[0]).cpu() # size [5, 20, 2]
+    centers = place_cell.centers.cpu()
+
+    plt.figure(figsize=(5,5))
+    plt.scatter(centers[:,0], centers[:,1], s=10, c='k')
+    for i in range(5):
+        plt.plot(pos[i,:,0], pos[i,:,1], c='r', lw=2, label='true')
+        plt.plot(pred_pos[i,:,0], pred_pos[i,:,1], c='b', lw=2, label='predicted')
+        if i == 0:
+            plt.legend()
+
+    plt.xlim(-options.box_width/2, options.box_width/2)
+    plt.ylim(-options.box_height/2, options.box_height/2)
+    plt.savefig(os.path.join(options.save_dir, 'performance.png'))
+
 def plot_1d_ratemaps(rate_map, options):
     n_col = 4
     fig, ax = plt.subplots(n_col, options.Ng//n_col, figsize=(2*options.Ng//n_col, n_col))
@@ -300,3 +316,24 @@ def plot_1d_ratemaps(rate_map, options):
         ax.set_xticks([-options.track_length/2, 0, options.track_length/2])
         ax.set_xticklabels([-options.track_length/2, 0, options.track_length/2])
     plt.savefig(os.path.join(options.save_dir, '1d_ratemaps.png'))
+
+def plot_2d_ratemaps(rate_map, options, n_col=4):
+    fig, ax = plt.subplots(n_col, options.Ng//n_col, figsize=(options.Ng//n_col, n_col))
+    for i, ax in enumerate(ax.flatten()):
+        r = (rate_map[i] - rate_map[i].min()) / (rate_map[i].max() - rate_map[i].min())
+        ax.imshow(r, cmap='jet')
+        ax.set_xticks([])
+        ax.set_yticks([])
+        # ax.set_title(f'Grid Cell {i+1}')
+    plt.tight_layout()
+    plt.savefig(os.path.join(options.save_dir, '2d_ratemaps.png'))
+
+def plot_loss_err(trainer, options):
+    plt.figure(figsize=(12,3))
+    plt.subplot(121)
+    plt.plot(trainer.err, c='black')
+    plt.title('Decoding error (m)'); plt.xlabel('train step')
+    plt.subplot(122)
+    plt.plot(trainer.loss, c='black');
+    plt.title('Loss'); plt.xlabel('train step');
+    plt.savefig(os.path.join(options.save_dir, 'loss')) 
