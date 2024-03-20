@@ -23,10 +23,10 @@ class PlaceCells(object):
         np.random.seed(0)
         usx = np.random.uniform(-self.box_width/2, self.box_width/2, (self.Np,))
         usy = np.random.uniform(-self.box_width/2, self.box_width/2, (self.Np,))
-        self.us = torch.tensor(np.vstack([usx, usy]).T)
+        self.centers = torch.tensor(np.vstack([usx, usy]).T)
         # If using a GPU, put on GPU
-        self.us = self.us.to(self.device)
-        # self.us = torch.tensor(np.load('models/example_pc_centers.npy')).cuda()
+        self.centers = self.centers.to(self.device)
+        # self.centers = torch.tensor(np.load('models/example_pc_centers.npy')).cuda()
 
     def get_activation(self, pos):
         '''
@@ -38,7 +38,7 @@ class PlaceCells(object):
         Returns:
             outputs: Place cell activations with shape [batch_size, sequence_length, Np].
         '''
-        d = torch.abs(pos[:, :, None, :] - self.us[None, None, ...]).float()
+        d = torch.abs(pos[:, :, None, :] - self.centers[None, None, ...]).float()
 
         if self.is_periodic:
             dx = d[:,:,:,0]
@@ -77,7 +77,7 @@ class PlaceCells(object):
             pred_pos: Predicted 2d position with shape [batch_size, sequence_length, 2].
         '''
         _, idxs = torch.topk(activation, k=k)
-        pred_pos = self.us[idxs].mean(-2)
+        pred_pos = self.centers[idxs].mean(-2)
         return pred_pos
 
     def grid_pc(self, pc_outputs, res=32):
@@ -103,7 +103,7 @@ class PlaceCells(object):
             # grid data basically rewrites the pc_outputs onto the grid
             # but what if pc_outputs are not exatcly on the grid?
             # 
-            gridval = scipy.interpolate.griddata(self.us.cpu(), pc_outputs[i], grid)
+            gridval = scipy.interpolate.griddata(self.centers.cpu(), pc_outputs[i], grid)
             pc[i] = gridval.reshape([res, res])
         
         return pc
