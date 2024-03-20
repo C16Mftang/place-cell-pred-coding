@@ -30,7 +30,7 @@ def generate_traj_data(options):
         os.makedirs(dpath)
         
     np.savez(
-        os.path.join(dpath, f'{options.batch_size}_{options.seq_len}_{options.Np}_{dt}.npz'),
+        os.path.join(dpath, f'{options.batch_size}_{options.sequence_length}_{options.Np}_{dt}.npz'),
         v=v.cpu().numpy(),
         init_actv=init_actv.cpu().numpy(),
         pc_outputs=pc_outputs.cpu().numpy(),
