@@ -18,10 +18,13 @@ class RNN(torch.nn.Module):
 
         # Input weights
         self.encoder = torch.nn.Linear(self.Np, self.Ng, bias=False)
-        self.RNN = torch.nn.RNN(input_size=2,
-                                hidden_size=self.Ng,
-                                nonlinearity=options.activation,
-                                bias=False)
+        self.RNN = torch.nn.RNN(
+            input_size=2,
+            hidden_size=self.Ng,
+            nonlinearity=options.activation,
+            bias=False,
+            batch_first=True,
+        )
         # Linear read-out weights
         self.decoder = torch.nn.Linear(self.Ng, self.Np, bias=True)
         
@@ -239,182 +242,6 @@ class TemporalPCN(nn.Module):
         energy += self.weight_decay * (torch.sum(self.Wr.weight**2))
 
         return energy, obs_loss
-
-# class HierarchicalPCN(nn.Module):
-#     def __init__(self, nodes, nonlin, lamb=0., use_bias=False):
-#         super().__init__()
-#         self.n_layers = len(nodes)
-#         self.layers = nn.Sequential()
-#         for l in range(self.n_layers-1):
-#             self.layers.add_module(f'layer_{l}', nn.Linear(
-#                 in_features=nodes[l],
-#                 out_features=nodes[l+1],
-#                 bias=use_bias,
-#             ))
-
-#         self.mem_dim = nodes[0]
-#         self.memory = nn.Parameter(torch.zeros((nodes[0],)))
-
-#         if nonlin == 'Tanh':
-#             nonlin = utils.Tanh()
-#         elif nonlin == 'ReLU':
-#             nonlin = utils.ReLU()
-#         elif nonlin == 'Linear':
-#             nonlin = utils.Linear()
-#         self.nonlins = [nonlin] * (self.n_layers - 1)
-#         self.use_bias = use_bias
-
-#         # initialize nodes
-#         self.val_nodes = [[] for _ in range(self.n_layers)]
-#         # self.preds = [[] for _ in range(self.n_layers)]
-#         self.errs = [[] for _ in range(self.n_layers)]
-
-#         # sparse penalty
-#         self.lamb = lamb
-
-#     def get_inf_losses(self):
-#         return self.inf_losses # inf_iters,
-
-#     def update_err_nodes(self):
-#         for l in range(0, self.n_layers):
-#             if l == 0:
-#                 self.errs[l] = self.val_nodes[l] - self.memory
-#             else:
-#                 preds = self.layers[l-1](self.nonlins[l-1](self.val_nodes[l-1]))
-#                 self.errs[l] = self.val_nodes[l] - preds
-
-#     def update_val_nodes(self, inf_lr):
-#         for l in range(0, self.n_layers-1):
-#             derivative = self.nonlins[l].deriv(self.val_nodes[l])
-#             # sparse penalty
-#             penalty = self.lamb if l == 0 else 0.
-#             delta = -self.errs[l] - penalty * torch.sign(self.val_nodes[l]) + derivative * torch.matmul(self.errs[l+1], self.layers[l].weight)
-#             self.val_nodes[l] = F.relu(self.val_nodes[l] + inf_lr * delta)
-
-#     def set_nodes(self, batch_inp):
-#         # computing val nodes
-#         self.val_nodes[0] = self.memory.clone()
-#         for l in range(1, self.n_layers-1):
-#             self.val_nodes[l] = self.layers[l-1](self.nonlins[l-1](self.val_nodes[l-1]))
-#         self.val_nodes[-1] = batch_inp.clone()
-
-#         # computing error nodes
-#         self.update_err_nodes()
-
-#     def inference(self, batch_inp, n_iters, inf_lr):
-#         self.set_nodes(batch_inp)
-#         self.inf_losses = []
-        
-#         for itr in range(n_iters):
-#             with torch.no_grad():
-#                 self.update_val_nodes(inf_lr)
-#             self.update_err_nodes()
-#             self.inf_losses.append(self.get_energy().item())
-
-#     def get_energy(self):
-#         """Function to obtain the sum of all layers' squared MSE"""
-#         total_energy = 0
-#         for l in range(self.n_layers):
-#             total_energy += torch.sum(self.errs[l] ** 2) # average over batch and feature dimensions
-#         return total_energy
-
-# class MultilayertPC(nn.Module):
-#     """Multi-layer tPC class, using autograd"""
-#     def __init__(self, options):
-#         super(MultilayertPC, self).__init__()
-#         self.Wr = nn.Linear(options.Ng, options.Ng, bias=False)
-#         self.Win = nn.Linear(options.Nv, options.Ng, bias=False)
-#         self.Wout = nn.Linear(options.Ng, options.Np, bias=False)
-
-#         if options.activation == 'linear':
-#             self.nonlin = utils.Linear()
-#         elif options.activation == 'tanh':
-#             self.nonlin = utils.Tanh()
-#         elif options.activation == 'relu':
-#             self.nonlin = utils.ReLU()
-#         else:
-#             raise ValueError("no such nonlinearity!")
-
-#         self.sparse_z = options.lambda_z
-#         self.hidden_size = options.Ng
-
-#         # for initializing the hidden state
-#         self.mu = nn.Parameter(torch.zeros(options.Ng))
-#         self.init = True
-
-#         self.weight_decay = options.weight_decay
-    
-#     def forward(self, v):
-#         """v: velocity input at a particular timestep in stimulus"""
-#         if self.init:
-#             # broadcasting the mean to the batch size
-#             pred_z = self.mu + torch.zeros_like(self.prev_z).to(self.Wr.weight.device)
-#         else:
-#             pred_z = self.Wr(self.nonlin(self.prev_z)) + self.Win(self.nonlin(v))
-
-#         pred_x = self.Wout(self.nonlin(pred_z))
-#         if self.init:
-#             self.set_init(False)
-#         return pred_z, pred_x
-
-#     def set_init(self, init):
-#         self.init = init
-
-#     def init_hidden(self, bsz):
-#         """Initializing prev_z randomly"""
-#         self.prev_z = nn.init.kaiming_uniform_(torch.empty(bsz, self.hidden_size)).to(self.Wr.weight.device)
-
-#     def update_errs(self, x, v):
-#         """Update the prediction errors
-        
-#         Inputs:
-#             x: place cell activity at a particular timestep in stimulus
-#             v: velocity input at a particular timestep in stimulus
-#         """
-#         pred_z, _ = self.forward(v)
-#         pred_x = self.Wout(self.nonlin(self.z))
-#         err_z = self.z - pred_z
-#         err_x = x - pred_x
-#         return err_z, err_x
-    
-#     def update_nodes(self, inf_lr, x, v):
-#         """Update the values nodes and error nodes"""
-#         err_z, err_x = self.update_errs(x, v)
-#         delta_z = err_z - self.nonlin.deriv(self.z) * torch.matmul(err_x, self.Wout.weight.detach().clone())
-#         delta_z += self.sparse_z * torch.sign(self.z)
-#         self.z -= inf_lr * delta_z
-
-#         # update the previous hidden state with the current hidden state
-#         self.prev_z = self.z.clone()  
-
-#     def inference(self, inf_iters, inf_lr, x, v):
-#         """run inference on the hidden state"""
-#         with torch.no_grad():
-#             # initialize the current hidden state with a forward pass from the randomly initialized prev_z
-#             self.z, _ = self.forward(v)
-#             for i in range(inf_iters):
-#                 self.update_nodes(inf_lr, x, v)
-
-#     def set_latents(self, z):
-#         """setting the hidden state to a particular value"""
-#         self.z = z.clone().detach()
-
-#     def get_latents(self):
-#         return self.z.clone().detach()
-                
-#     def get_energy(self, x, v):
-#         """returns the average (across batches) energy of the model
-        
-#         Inputs:
-#             x: place cell activity at a particular timestep in stimulus
-#             v: velocity input at a particular timestep in stimulus
-#         """
-#         err_z, err_x = self.update_errs(x, v)
-#         self.hidden_loss = torch.sum(err_z**2, dim=-1).mean()
-#         self.obs_loss = torch.sum(err_x**2, dim=-1).mean()
-#         energy = self.hidden_loss + self.obs_loss
-#         energy += self.weight_decay * torch.sum(self.Wr.weight**2)
-#         return energy
 
 class PredSparseCoding(nn.Module):
     """
