@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import os
+import time
 
 from tqdm import tqdm
 from matplotlib import pyplot as plt
@@ -13,42 +14,43 @@ from model import RNN
 from trainer import Trainer
 from utils import generate_run_ID
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
-
-print(device)
-
 # Training hyperparameters to fully reproduce Sorscher et al. 2023
 class Options:
-    pass
+    full_size = 50000
+    n_epochs = 500          # number of training epochs
+    n_steps = 2000          # number of batches in one epoch
+    batch_size = 100        # number of trajectories per batch
+    sequence_length = 20    # number of steps in trajectory
+    learning_rate = 1e-4    # gradient descent learning rate
+    Np = 200                # number of place cells
+    Ng = 50               # number of grid cells
+    place_cell_rf = 0.12    # width of place cell center tuning curve (m)
+    surround_scale = 2      # if DoG, ratio of sigma2^2 to sigma1^2
+    RNN_type = 'RNN'        # RNN or LSTM
+    activation = 'relu'     # recurrent nonlinearity
+    weight_decay = 1e-4     # strength of weight decay on recurrent weights
+    DoG = True              # use difference of gaussians tuning curves
+    periodic = False        # trajectories with periodic boundary conditions
+    box_width = 1.6         # width of training environment
+    box_height = 1.6        # height of training environment
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    data_source = 'online'
+    decay_step_size = 5
+    decay_rate = 1
 options = Options()
 
-options.full_size = 50000
-options.n_epochs = 500          # number of training epochs
-options.n_steps = 2000          # number of batches in one epoch
-options.batch_size = 100        # number of trajectories per batch
-options.sequence_length = 20    # number of steps in trajectory
-options.learning_rate = 1e-4    # gradient descent learning rate
-options.Np = 512                # number of place cells
-options.Ng = 2048               # number of grid cells
-options.place_cell_rf = 0.12    # width of place cell center tuning curve (m)
-options.surround_scale = 2      # if DoG, ratio of sigma2^2 to sigma1^2
-options.RNN_type = 'RNN'        # RNN or LSTM
-options.activation = 'relu'     # recurrent nonlinearity
-options.weight_decay = 1e-4     # strength of weight decay on recurrent weights
-options.DoG = True              # use difference of gaussians tuning curves
-options.periodic = False        # trajectories with periodic boundary conditions
-options.box_width = 2.2         # width of training environment
-options.box_height = 2.2        # height of training environment
-options.device = device
-options.save_dir = 'models/'
-options.data_source = 'online'
-options.run_ID = generate_run_ID(options)
-options.decay_step_size = 5
-options.decay_rate = 1
+# save directory
+now = time.strftime('%b-%d-%Y-%H-%M-%S', time.gmtime(time.time()))
+options.save_dir = os.path.join('./results/rnn', now)
+
+if not os.path.exists(options.save_dir):
+    os.makedirs(options.save_dir)
+print('Saving to:', options.save_dir)
+
 
 # define place cells, trajectory generator, model, and trainer
 place_cells = PlaceCells(options)
-model = RNN(options, place_cells).to(device)
+model = RNN(options, place_cells).to(options.device)
 trajectory_generator = TrajectoryGenerator(options, place_cells)
 trainer = Trainer(options, model, trajectory_generator, restore=False)
 
@@ -74,4 +76,4 @@ plt.title('Decoding error (m)'); plt.xlabel('train step')
 plt.subplot(122)
 plt.plot(trainer.loss, c='black');
 plt.title('Loss'); plt.xlabel('train step');
-plt.savefig(os.path.join(options.save_dir, options.run_ID)+'/loss')
+plt.savefig(os.path.join(options.save_dir, 'loss'))
