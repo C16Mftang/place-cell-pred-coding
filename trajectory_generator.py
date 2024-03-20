@@ -38,7 +38,7 @@ class TrajectoryGenerator(object):
     def generate_trajectory(self, box_width, box_height, batch_size):
         '''Generate a random walk in a rectangular box'''
         samples = self.options.sequence_length
-        dt = 0.02  # time step increment (seconds)
+        dt = self.options.dt  # time step increment (seconds)
         sigma = 5.76 * 2  # stdev rotation velocity (rads/sec)
         b = 0.13 * 2 * np.pi  # forward velocity rayleigh dist scale (m/sec)
         mu = 0  # turn angle bias 
@@ -102,54 +102,7 @@ class TrajectoryGenerator(object):
 
         return traj
 
-    def get_generator(self, batch_size=None, box_width=None, box_height=None):
-        '''
-        Returns a generator that yields batches of trajectories
-        '''
-        if not batch_size:
-            batch_size = self.options.batch_size
-        if not box_width:
-            box_width = self.options.box_width
-        if not box_height:
-            box_height = self.options.box_height
-
-        while True:
-            traj = self.generate_trajectory(box_width, box_height, batch_size)
-
-            v = np.stack([traj['ego_v'] * np.cos(traj['target_hd']),
-                          traj['ego_v'] * np.sin(traj['target_hd'])], axis=-1)
-            v = torch.tensor(v, dtype=torch.float32).transpose(0, 1)
-
-            pos = np.stack([traj['target_x'], traj['target_y']], axis=-1)
-            pos = torch.tensor(pos, dtype=torch.float32).transpose(0, 1)
-            # Put on GPU if GPU is available
-            pos = pos.to(self.options.device)
-            place_outputs = self.place_cells.get_activation(pos)
-
-            init_pos = np.stack([traj['init_x'], traj['init_y']], axis=-1)
-            init_pos = torch.tensor(init_pos, dtype=torch.float32)
-            init_pos = init_pos.to(self.options.device)
-            init_actv = self.place_cells.get_activation(init_pos).squeeze()
-
-            v = v.to(self.options.device)
-            inputs = (v, init_actv)
-
-            yield (inputs, place_outputs, pos)
-
-    # def get_dataset(self, batch_size=None, box_width=None, box_height=None):
-    #     """Returns a full dataset of trajectories
-    #     """
-    #     if not batch_size:
-    #         batch_size = self.options.batch_size
-    #     if not box_width:
-    #         box_width = self.options.box_width
-    #     if not box_height:
-    #         box_height = self.options.box_height
-
-        
-
-    def get_test_batch(self, batch_size=None, box_width=None, box_height=None):
-        ''' For testing performance, returns a batch of smample trajectories'''
+    def get_batch_data(self, batch_size=None, box_width=None, box_height=None):
         if not batch_size:
             batch_size = self.options.batch_size
         if not box_width:
@@ -160,11 +113,12 @@ class TrajectoryGenerator(object):
         traj = self.generate_trajectory(box_width, box_height, batch_size)
 
         v = np.stack([traj['ego_v'] * np.cos(traj['target_hd']),
-                      traj['ego_v'] * np.sin(traj['target_hd'])], axis=-1)
-        v = torch.tensor(v, dtype=torch.float32).transpose(0, 1)
+                        traj['ego_v'] * np.sin(traj['target_hd'])], axis=-1)
+        v = torch.tensor(v, dtype=torch.float32)
 
         pos = np.stack([traj['target_x'], traj['target_y']], axis=-1)
-        pos = torch.tensor(pos, dtype=torch.float32).transpose(0, 1)
+        pos = torch.tensor(pos, dtype=torch.float32)
+        # Put on GPU if GPU is available
         pos = pos.to(self.options.device)
         place_outputs = self.place_cells.get_activation(pos)
 
@@ -176,7 +130,17 @@ class TrajectoryGenerator(object):
         v = v.to(self.options.device)
         inputs = (v, init_actv)
 
-        return (inputs, pos, place_outputs)
+        return (inputs, place_outputs, pos)
+
+    def get_generator(self, batch_size=None, box_width=None, box_height=None):
+        '''
+        Returns a generator that yields batches of trajectories
+        '''
+        while True:
+            yield self.get_batch_data(batch_size, box_width, box_height)
+
+    def get_test_batch(self, batch_size=None, box_width=None, box_height=None):
+        return self.get_batch_data(batch_size, box_width, box_height)
 
 
 class TrajectoryGenerator1D(object):
@@ -211,28 +175,28 @@ class TrajectoryGenerator1D(object):
 
         Inputs:
             batch_size: int, number of trajectories to generate
-            seq_len: int, length of each trajectory
+            sequence_length: int, length of each trajectory
 
         Outputs:
-            traj: (batch_size, seq_len) tensor of the generated trajectories
+            traj: (batch_size, sequence_length) tensor of the generated trajectories
         '''
         if seed:
             torch.manual_seed(seed)
         track_length = self.place_cell.track_length
         batch_size = self.options.batch_size
-        seq_len = self.options.seq_len
+        sequence_length = self.options.sequence_length
         dt = self.options.dt
-        # initialize position; add 2 to seq_len to account for initial and final positions
+        # initialize position; add 2 to sequence_length to account for initial and final positions
         # we will discard the final position later
-        position = torch.zeros(batch_size, seq_len+2)
+        position = torch.zeros(batch_size, sequence_length+2)
 
         # random initial position; between -track_length/2 and track_length/2
         position[:, 0] = torch.rand(batch_size) * track_length - track_length / 2
 
         # IMPORTANT: For nonperiodic boundary, using a positive velocity will like to result in bouncing back and forth near a wall
-        velocity = torch.rand((batch_size, seq_len+1)) * 2 - 1
+        velocity = torch.rand((batch_size, sequence_length+1)) * 2 - 1
 
-        for t in range(seq_len + 1):
+        for t in range(sequence_length + 1):
             v = velocity[:, t]
             position[:, t+1] = position[:, t] + v * dt
             # for non-periodic boundary, check if the updated position hits the wall, if so reflect the position
@@ -244,8 +208,8 @@ class TrajectoryGenerator1D(object):
             position = (position + track_length / 2) % track_length - track_length / 2
 
         traj = {}
-        traj['position'] = position[:, 1:-1].to(self.options.device) # discard initial and final positions, [batch_size, seq_len]
-        traj['velocity'] = velocity[:, 1:].to(self.options.device) # discard initial velocity, [batch_size, seq_len]
+        traj['position'] = position[:, 1:-1].to(self.options.device) # discard initial and final positions, [batch_size, sequence_length]
+        traj['velocity'] = velocity[:, 1:].to(self.options.device) # discard initial velocity, [batch_size, sequence_length]
         traj['init_position'] = position[:, 0].unsqueeze(-1).to(self.options.device)# [batch_size, 1]
 
         return traj
@@ -255,10 +219,10 @@ class TrajectoryGenerator1D(object):
         Generate a batch of trajectories and their corresponding place cell activations
 
         Outputs:
-            input: (velocity, init_activation), where velocity is a (batch_size, seq_len, 1) tensor of the velocity of the agent
+            input: (velocity, init_activation), where velocity is a (batch_size, sequence_length, 1) tensor of the velocity of the agent
                 and init_activation is a (batch_size, Np) tensor of the activation of the place cells at the initial position
-            activation: (batch_size, seq_len, Np) tensor of the activation of the place cells
-            position: (batch_size, seq_len, 1) tensor of the generated 1d trajectories
+            activation: (batch_size, sequence_length, Np) tensor of the activation of the place cells
+            position: (batch_size, sequence_length, 1) tensor of the generated 1d trajectories
         '''
         traj = self.generate_trajectory(seed)
         # unsqueeze the position to match the shape of the place cell activations
