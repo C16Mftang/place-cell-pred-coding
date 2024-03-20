@@ -24,7 +24,7 @@ class Options():
     place_cell_rf = 0.05 # None for one-hot encoding of place cells
     plce_cell_seed = 0
     periodic = False
-    seq_len = 20
+    sequence_length = 20
     dt = 0.01
     batch_size = 500
     n_epochs = 1
