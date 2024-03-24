@@ -82,7 +82,7 @@ class RNN(torch.nn.Module):
         preds = self.softmax(self.predict(inputs))
         # print(preds[0])
         # yhat = self.softmax(self.predict(inputs))
-        loss = -(y*torch.log(preds)).sum(-1).mean()
+        loss = -(y*torch.log(preds + 1e-9)).sum(-1).mean()
         # loss = self.loss(self.softmax(preds), y)
         # loss = (preds - y).sum(-1).mean()
 
