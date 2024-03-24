@@ -26,8 +26,8 @@ class Options:
     sequence_length = 20
     dt = 0.02
     batch_size = 500
-    n_epochs = 10
-    n_steps = 10
+    n_epochs = 100
+    n_steps = 100
     learning_rate = 1e-4    
     weight_decay = 1e-4    
     decay_step_size = 50
@@ -60,3 +60,4 @@ plot_2d_performance(place_cell, generator, options, trainer)
 rate_map = compute_ratemaps(model, trainer, generator, options, res=20, n_avg=200, Ng=options.Ng)
 plot_2d_ratemaps(rate_map, options, n_col=4)
 plot_loss_err(trainer, options)
+utils.save_options_to_json(options, os.path.join(options.save_dir, 'configs.json'))
