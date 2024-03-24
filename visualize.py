@@ -337,3 +337,22 @@ def plot_loss_err(trainer, options):
     plt.plot(trainer.loss, c='black');
     plt.title('Loss'); plt.xlabel('train step');
     plt.savefig(os.path.join(options.save_dir, 'loss')) 
+
+def plot_place_cells(place_cell, options, res, n_show=5):
+    grid = np.array(
+        np.meshgrid(
+            np.linspace(-options.box_width/2, options.box_width/2, res),
+            np.linspace(-options.box_height/2, options.box_height/2, res)
+        )
+    ).T
+    grid = torch.tensor(grid, device=options.device)
+    grid_pc = place_cell.get_activation(grid)
+    select = np.random.choice(np.arange(options.Np), n_show, replace=False)
+    fig, axes = plt.subplots(1, n_show, figsize=(n_show*2, 2))
+    for i in range(n_show):
+        # notice the interpolation arg, which visually makes these 'real' place fields
+        axes[i].imshow(grid_pc[:,:,select[i]].cpu().numpy())
+        axes[i].set_title('Place cell {}'.format(select[i]))
+        axes[i].set_xticks([])
+        axes[i].set_yticks([])
+    plt.savefig(os.path.join(options.save_dir, 'place_cell_examples'))
