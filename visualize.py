@@ -81,6 +81,8 @@ def compute_ratemaps(
         idxs=None,
     ):
     '''Compute spatial firing fields'''
+    if Ng > 64:
+        Ng = 64
 
     if not n_avg:
         n_avg = 1000 // options.sequence_length
@@ -101,9 +103,9 @@ def compute_ratemaps(
 
         if isinstance(model, m.TemporalPCN):
             _, g_batch = trainer.predict(inputs)
-            g_batch = g_batch.detach().cpu().numpy().reshape(-1, Ng) # [sequence_length*batch_size, Ng]
+            g_batch = g_batch[:,:,:Ng].detach().cpu().numpy().reshape(-1, Ng) # [sequence_length*batch_size, Ng]
         else:
-            g_batch = model.g(inputs).detach().cpu().numpy().reshape(-1, Ng) # [sequence_length*batch_size, Ng]
+            g_batch = model.g(inputs)[:,:,:Ng].detach().cpu().numpy().reshape(-1, Ng) # [sequence_length*batch_size, Ng]
         
         pos_batch = np.reshape(pos_batch.cpu().detach().numpy(), [-1, 2])
         
@@ -318,7 +320,8 @@ def plot_1d_ratemaps(rate_map, options):
     plt.savefig(os.path.join(options.save_dir, '1d_ratemaps.png'))
 
 def plot_2d_ratemaps(rate_map, options, n_col=4):
-    fig, ax = plt.subplots(n_col, options.Ng//n_col, figsize=(options.Ng//n_col, n_col))
+    Ng = 64 if options.Ng > 64 else options.Ng
+    fig, ax = plt.subplots(n_col, Ng//n_col, figsize=(Ng//n_col, n_col))
     for i, ax in enumerate(ax.flatten()):
         r = (rate_map[i] - rate_map[i].min()) / (rate_map[i].max() - rate_map[i].min())
         ax.imshow(r, cmap='jet')
