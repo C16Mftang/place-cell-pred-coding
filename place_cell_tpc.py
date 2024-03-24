@@ -13,8 +13,8 @@ from visualize import *
 class Options:
     device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
     oned = False
-    Np = 100
-    Ng = 20
+    Np = 500
+    Ng = 50
     Nv = 2
     DoG = False
     box_width = 1.6         
@@ -39,7 +39,7 @@ class Options:
     out_activation = utils.Softmax()
     rec_activation = utils.Tanh()
     restore = None # if restore, this should be the timestamp of the saved model
-    preloaded_data = True
+    preloaded_data = False
     save = False
     save_every = 100
 options = Options()
@@ -62,6 +62,7 @@ init_model = HierarchicalPCN(options).to(options.device)
 trainer = PCTrainer(options, model, init_model, generator, place_cell, restore=options.restore)
 
 trainer.train(preloaded_data=options.preloaded_data, save=options.save)
+plot_place_cells(place_cell, options, res=30)
 plot_2d_performance(place_cell, generator, options, trainer)
 rate_map = compute_ratemaps(model, trainer, generator, options, res=20, n_avg=200, Ng=options.Ng)
 plot_2d_ratemaps(rate_map, options, n_col=4)

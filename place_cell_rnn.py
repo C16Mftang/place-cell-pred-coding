@@ -14,8 +14,8 @@ from visualize import *
 class Options:
     device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
     oned = False
-    Np = 100
-    Ng = 20
+    Np = 512
+    Ng = 4096
     Nv = 2
     DoG = False
     box_width = 1.6         
@@ -28,7 +28,7 @@ class Options:
     batch_size = 500
     n_epochs = 100
     n_steps = 100
-    learning_rate = 1e-4    
+    learning_rate = 1e-3    
     weight_decay = 1e-4    
     decay_step_size = 50
     decay_rate = 0.9
@@ -56,6 +56,7 @@ model = RNN(options, place_cell).to(options.device)
 trainer = Trainer(options, model, generator, place_cell, restore=options.restore)
 
 trainer.train(preloaded_data=options.preloaded_data, save=options.save)
+plot_place_cells(place_cell, options, res=30)
 plot_2d_performance(place_cell, generator, options, trainer)
 rate_map = compute_ratemaps(model, trainer, generator, options, res=20, n_avg=200, Ng=options.Ng)
 plot_2d_ratemaps(rate_map, options, n_col=4)
