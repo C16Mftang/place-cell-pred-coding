@@ -155,8 +155,9 @@ class HierarchicalPCN(nn.Module):
         elif isinstance(self.out_activation, utils.Sigmoid):
             obs_loss = F.binary_cross_entropy_with_logits(self.Wout(self.z), self.x)
         else:
-            obs_loss = F.mse_loss(self.decode(self.z), self.x)
-        latent_loss = torch.sum(self.err_z**2, dim=-1).mean()
+            # obs_loss = F.mse_loss(self.decode(self.z), self.x)
+            obs_loss = torch.sum(self.err_x**2)
+        latent_loss = torch.sum(self.err_z**2)
         energy = obs_loss + latent_loss
         return energy, obs_loss
 
@@ -236,8 +237,9 @@ class TemporalPCN(nn.Module):
         elif isinstance(self.out_activation, utils.Sigmoid):
             obs_loss = F.binary_cross_entropy_with_logits(self.Wout(self.z), self.x)
         else:
-            obs_loss = F.mse_loss(self.decode(self.z), self.x)
-        latent_loss = torch.sum(self.err_z**2, dim=-1).mean()
+            # obs_loss = F.mse_loss(self.decode(self.z), self.x)
+            obs_loss = torch.sum(self.err_x**2)
+        latent_loss = torch.sum(self.err_z**2)
         energy = obs_loss + latent_loss
         energy += self.weight_decay * (torch.sum(self.Wr.weight**2))
 
