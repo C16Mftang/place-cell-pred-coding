@@ -15,6 +15,7 @@ class RNN(torch.nn.Module):
         self.sequence_length = options.sequence_length
         self.weight_decay = options.weight_decay
         self.place_cells = place_cells
+        self.loss = options.loss
 
         # Input weights
         self.encoder = torch.nn.Linear(self.Np, self.Ng, bias=False)
@@ -29,7 +30,6 @@ class RNN(torch.nn.Module):
         self.decoder = torch.nn.Linear(self.Ng, self.Np, bias=True)
         
         self.softmax = torch.nn.Softmax(dim=-1)
-        self.loss = torch.nn.MSELoss()
 
     def g(self, inputs):
         '''
@@ -79,11 +79,12 @@ class RNN(torch.nn.Module):
         #     num_classes=self.Np,
         # ).float()
         y = pc_outputs
-        preds = self.softmax(self.predict(inputs))
-        # print(preds[0])
-        # yhat = self.softmax(self.predict(inputs))
-        loss = -(y*torch.log(preds + 1e-9)).sum(-1).mean()
-        # loss = self.loss(self.softmax(preds), y)
+        if self.loss == 'CE':
+            preds = self.softmax(self.predict(inputs))
+            loss = -(y*torch.log(preds + 1e-9)).sum(-1).mean()
+        elif self.loss == 'MSE':
+            preds = self.softmax(self.predict(inputs))
+            loss = torch.sum((preds - y) ** 2, -1).mean()
         # loss = (preds - y).sum(-1).mean()
 
         # Weight regularization 
