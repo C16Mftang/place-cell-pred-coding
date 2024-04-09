@@ -9,6 +9,7 @@ from tqdm import tqdm
 
 from get_data import *
 import utils
+import wandb
 
 class Trainer(object):
     def __init__(self, options, model, trajectory_generator, place_cells, restore=True):
@@ -93,6 +94,7 @@ class Trainer(object):
 
             dataloader = get_traj_loader(path, self.options)
 
+        wandb.init(project='place-cell-rnn', config=self.options)
         for epoch_idx in range(self.n_epochs):
             epoch_loss = 0
             epoch_err = 0
@@ -117,7 +119,11 @@ class Trainer(object):
                         np.round(100 * err, 2),
                     )
                 )
-                
+            
+            wandb.log({
+                'loss': epoch_loss / self.n_steps,
+                'err': epoch_err / self.n_steps,
+            })
             self.loss.append(epoch_loss / self.n_steps)
             self.err.append(epoch_err / self.n_steps)
 
@@ -139,6 +145,7 @@ class Trainer(object):
                     )
                 )
         tbar.close()
+        wandb.finish()
 
     def predict(self, inputs):
         pred_pos = self.model.predict(inputs)
@@ -261,6 +268,7 @@ class PCTrainer(object):
 
             dataloader = get_traj_loader(path, self.options)
 
+        wandb.init(project='place-cell-tpc', config=self.options)
         for epoch_idx in range(self.n_epochs):
             epoch_loss = 0
             epoch_energy = 0
@@ -295,6 +303,11 @@ class PCTrainer(object):
                     )
                 )
 
+            wandb.log({
+                'loss': epoch_loss / self.n_steps,
+                'err': epoch_err / self.n_steps,
+                'energy': epoch_energy / self.n_steps,
+            })
             self.loss.append(epoch_loss / self.n_steps)
             self.err.append(epoch_err / self.n_steps)
             self.energy.append(epoch_energy / self.n_steps)
@@ -318,6 +331,7 @@ class PCTrainer(object):
                 )
 
         tbar.close()
+        wandb.finish()
 
     def predict(self, inputs):
         self.model.eval()
