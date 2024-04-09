@@ -15,7 +15,7 @@ class Options:
     device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
     oned = False
     Np = 512
-    Ng = 256
+    Ng = 4096
     Nv = 2
     DoG = True
     box_width = 1.6         
@@ -37,6 +37,7 @@ class Options:
     preloaded_data = False
     save = False 
     save_every = 100
+    loss = 'MSE'
 options = Options()
 
 # save directory
