@@ -83,7 +83,7 @@ class RNN(torch.nn.Module):
             preds = self.softmax(self.predict(inputs))
             loss = -(y*torch.log(preds + 1e-9)).sum(-1).mean()
         elif self.loss == 'MSE':
-            preds = self.softmax(self.predict(inputs))
+            preds = F.tanh(self.predict(inputs))
             loss = torch.sum((preds - y) ** 2, -1).mean()
         # loss = (preds - y).sum(-1).mean()
 
