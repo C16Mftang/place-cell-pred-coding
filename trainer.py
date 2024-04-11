@@ -268,7 +268,8 @@ class PCTrainer(object):
 
             dataloader = get_traj_loader(path, self.options)
 
-        wandb.init(project='place-cell-tpc', config=self.options)
+        if self.options.is_wandb:
+            wandb.init(project='place-cell-tpc', config=self.options)
         for epoch_idx in range(self.n_epochs):
             epoch_loss = 0
             epoch_energy = 0
@@ -303,11 +304,12 @@ class PCTrainer(object):
                     )
                 )
 
-            wandb.log({
-                'loss': epoch_loss / self.n_steps,
-                'err': epoch_err / self.n_steps,
-                'energy': epoch_energy / self.n_steps,
-            })
+            if self.options.is_wandb:
+                wandb.log({
+                    'loss': epoch_loss / self.n_steps,
+                    'err': epoch_err / self.n_steps,
+                    'energy': epoch_energy / self.n_steps,
+                })
             self.loss.append(epoch_loss / self.n_steps)
             self.err.append(epoch_err / self.n_steps)
             self.energy.append(epoch_energy / self.n_steps)
@@ -331,7 +333,8 @@ class PCTrainer(object):
                 )
 
         tbar.close()
-        wandb.finish()
+        if self.options.is_wandb:
+            wandb.finish()
 
     def predict(self, inputs):
         self.model.eval()
