@@ -7,3 +7,4 @@ predictive_coding/__pycache__/*
 /results/*
 *.sh
 /output/*
+/wandb/*
