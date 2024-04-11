@@ -1,48 +1,84 @@
 import numpy as np
 import torch
+import torch.nn as nn
 import os
 import time
 import matplotlib.pyplot as plt
+import argparse
 
 from place_cells import PlaceCells
 from trajectory_generator import TrajectoryGenerator
 from model import HierarchicalPCN, TemporalPCN
 from trainer import PCTrainer
 from visualize import *
+import utils
 
-class Options:
-    device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
-    oned = False
-    Np = 512
-    Ng = 4096
-    Nv = 2
-    DoG = True
-    box_width = 1.6         
-    box_height = 1.6 
-    place_cell_rf = 0.12
-    surround_scale = 2
-    periodic = True
-    sequence_length = 20
-    dt = 0.02
-    batch_size = 500
-    n_epochs = 400
-    n_steps = 100
-    learning_rate = 1e-4
-    weight_decay = 0
-    decay_step_size = 50
-    decay_rate = 0.9 
-    lambda_z = 0.
-    lambda_z_init = 0.1
-    inf_iters = 20 
-    test_inf_iters = 20
-    inf_lr = 1e-2
-    out_activation = utils.Tanh()
-    rec_activation = utils.Tanh()
-    restore = None # if restore, this should be the timestamp of the saved model
-    preloaded_data = False
-    save = False
-    save_every = 100
-options = Options()
+parser = argparse.ArgumentParser()
+parser.add_argument('--device', type=str, default='cuda:0', 
+    help='Device to use')
+parser.add_argument('--oned', type=lambda x: (str(x).lower() == 'true'), default=False, 
+    help='Use one-dimensional place cells')
+parser.add_argument('--Np', type=int, default=512, 
+    help='Number of place cells')
+parser.add_argument('--Ng', type=int, default=4096, 
+    help='Number of grid cells')
+parser.add_argument('--Nv', type=int, default=2, 
+    help='Number of velocity inputs')
+parser.add_argument('--DoG', type=lambda x: (str(x).lower() == 'true'), default=True, 
+    help='Use Difference of Gaussians for place cell receptive fields')
+parser.add_argument('--box_width', type=float, default=1.6, 
+    help='Width of the environment box')
+parser.add_argument('--box_height', type=float, default=1.6, 
+    help='Height of the environment box')
+parser.add_argument('--place_cell_rf', type=float, default=0.12, 
+    help='Place cell receptive field size')
+parser.add_argument('--surround_scale', type=int, default=2, 
+    help='Scale factor for the surround inhibition')
+parser.add_argument('--periodic', type=lambda x: (str(x).lower() == 'true'), default=True, 
+    help='Use periodic boundary conditions')
+parser.add_argument('--sequence_length', type=int, default=20, 
+    help='Length of the trajectory sequence')
+parser.add_argument('--dt', type=float, default=0.02, 
+    help='Time step size')
+parser.add_argument('--batch_size', type=int, default=500, 
+    help='Batch size for training')
+parser.add_argument('--n_epochs', type=int, default=200, 
+    help='Number of training epochs')
+parser.add_argument('--n_steps', type=int, default=100, 
+    help='Number of steps in each trajectory')
+parser.add_argument('--learning_rate', type=float, default=1e-4, 
+    help='Learning rate for optimization')
+parser.add_argument('--weight_decay', type=float, default=0, 
+    help='Weight decay for optimization')
+parser.add_argument('--decay_step_size', type=int, default=10, 
+    help='Step size for learning rate decay')
+parser.add_argument('--decay_rate', type=float, default=0.9, 
+    help='Decay rate for learning rate decay')
+parser.add_argument('--lambda_z', type=float, default=0, 
+    help='Weight for the regularization term')
+parser.add_argument('--lambda_z_init', type=float, default=0, 
+    help='Initial weight for the regularization term')
+parser.add_argument('--inf_iters', type=int, default=20, 
+    help='Number of inference iterations')
+parser.add_argument('--test_inf_iters', type=int, default=20, 
+    help='Number of inference iterations for testing')
+parser.add_argument('--inf_lr', type=float, default=1e-2, 
+    help='Learning rate for inference')
+parser.add_argument('--out_activation', type=nn.Module, default=utils.Tanh(), 
+    help='Activation function for the output layer')
+parser.add_argument('--rec_activation', type=nn.Module, default=utils.Tanh(), 
+    help='Activation function for the recurrent layer')
+parser.add_argument('--restore', type=str, default=None, 
+    help='Timestamp of the saved model to restore')
+parser.add_argument('--preloaded_data', type=lambda x: (str(x).lower() == 'true'), default=False, 
+    help='Use preloaded data for training')
+parser.add_argument('--save', type=lambda x: (str(x).lower() == 'true'), default=False, 
+    help='Save the trained model')
+parser.add_argument('--save_every', type=int, default=100, 
+    help='Save the model every n epochs')
+parser.add_argument('--is-wandb', type=lambda x: (str(x).lower() == 'true'), default=True, 
+    help='Use wandb for logging')
+options = parser.parse_args()
 
 # save directory
 now = time.strftime('%b-%d-%Y-%H-%M-%S', time.gmtime(time.time()))
