@@ -22,14 +22,17 @@ class RNN(torch.nn.Module):
         self.RNN = torch.nn.RNN(
             input_size=2,
             hidden_size=self.Ng,
-            nonlinearity=options.activation,
+            nonlinearity=options.rec_activation,
             bias=False,
             batch_first=True,
         )
         # Linear read-out weights
         self.decoder = torch.nn.Linear(self.Ng, self.Np, bias=True)
         
-        self.softmax = torch.nn.Softmax(dim=-1)
+        if options.out_activation == 'softmax':
+            self.out_activation = torch.nn.Softmax(dim=-1)
+        elif options.out_activation == 'tanh':
+            self.out_activation = torch.nn.Tanh()
 
     def g(self, inputs):
         '''
@@ -74,18 +77,12 @@ class RNN(torch.nn.Module):
             loss: Avg. loss for this training batch.
             err: Avg. decoded position error in cm.
         '''
-        # y = torch.nn.functional.one_hot(
-        #     torch.argmax(pc_outputs, -1),
-        #     num_classes=self.Np,
-        # ).float()
         y = pc_outputs
+        preds = self.out_activation(self.predict(inputs))
         if self.loss == 'CE':
-            preds = self.softmax(self.predict(inputs))
-            loss = -(y*torch.log(preds + 1e-9)).sum(-1).mean()
+            loss = -(y * torch.log(preds + 1e-9)).sum(-1).mean()
         elif self.loss == 'MSE':
-            preds = F.tanh(self.predict(inputs))
             loss = torch.sum((preds - y) ** 2, -1).mean()
-        # loss = (preds - y).sum(-1).mean()
 
         # Weight regularization 
         loss += self.weight_decay * (self.RNN.weight_hh_l0**2).sum()
@@ -105,7 +102,11 @@ class HierarchicalPCN(nn.Module):
 
         # sparse penalty
         self.sparse_z = options.lambda_z_init
-        self.out_activation = options.out_activation
+        if options.out_activation == 'softmax':
+            self.out_activation = utils.Softmax()
+        elif options.out_activation == 'tanh':
+            self.out_activation = utils.Tanh()
+        self.loss = options.loss
 
     def set_nodes(self, inp):
         # intialize the value nodes
@@ -116,10 +117,7 @@ class HierarchicalPCN(nn.Module):
         self.update_err_nodes()
 
     def decode(self, z):
-        if not isinstance(self.out_activation, utils.Tanh):
-            return self.out_activation(self.Wout(z))
-        else:
-            return self.Wout(self.out_activation(z))
+        return self.out_activation(self.Wout(z))
 
     def update_err_nodes(self):
         self.err_z = self.z - self.mu
@@ -135,10 +133,8 @@ class HierarchicalPCN(nn.Module):
         Wout = self.Wout.weight.clone().detach()
         if isinstance(self.out_activation, utils.Softmax):
             delta = self.err_z - (self.out_activation.deriv(self.Wout(self.z)) @ self.err_x.unsqueeze(-1)).squeeze(-1) @ Wout
-        elif isinstance(self.out_activation, utils.Sigmoid):
-            delta = self.err_z - (self.out_activation.deriv(self.Wout(self.z)) * self.err_x) @ Wout
         else:
-            delta = self.err_z - self.out_activation.deriv(self.z) * (self.err_x @ Wout)
+            delta = self.err_z - (self.out_activation.deriv(self.Wout(self.z)) * self.err_x) @ Wout
         delta += self.sparse_z * torch.sign(self.z) 
         self.z = self.z - inf_lr * delta
 
@@ -151,12 +147,11 @@ class HierarchicalPCN(nn.Module):
 
     def get_energy(self):
         """Function to obtain the sum of all layers' squared MSE"""
-        if isinstance(self.out_activation, utils.Softmax):
+        if self.loss == 'CE':
             obs_loss = F.cross_entropy(self.Wout(self.z), self.x)
-        elif isinstance(self.out_activation, utils.Sigmoid):
+        elif self.loss == 'BCE':
             obs_loss = F.binary_cross_entropy_with_logits(self.Wout(self.z), self.x)
         else:
-            # obs_loss = F.mse_loss(self.decode(self.z), self.x)
             obs_loss = torch.sum(self.err_x**2, -1).mean()
         latent_loss = torch.sum(self.err_z**2, -1).mean()
         energy = obs_loss + latent_loss
@@ -172,8 +167,21 @@ class TemporalPCN(nn.Module):
 
         self.sparse_z = options.lambda_z
         self.weight_decay = options.weight_decay
-        self.out_activation = options.out_activation
-        self.rec_activation = options.rec_activation
+        if options.out_activation == 'softmax':
+            self.out_activation = utils.Softmax()
+        elif options.out_activation == 'tanh':
+            self.out_activation = utils.Tanh()
+        elif options.out_activation == 'sigmoid':
+            self.out_activation = utils.Sigmoid()
+        
+        if options.rec_activation == 'tanh':
+            self.rec_activation = utils.Tanh()
+        elif options.rec_activation == 'relu':
+            self.rec_activation = utils.ReLU()
+        elif options.rec_activation == 'sigmoid':
+            self.rec_activation = utils.Sigmoid()
+
+        self.loss = options.loss
 
     def set_nodes(self, v, prev_z, p):
         """Set the initial value of the nodes;
@@ -200,26 +208,18 @@ class TemporalPCN(nn.Module):
             self.err_x = self.x / (pred_x + 1e-9) - (1 - self.x) / (1 - pred_x + 1e-9)
 
     def g(self, v, prev_z):
-        if isinstance(self.out_activation, utils.Softmax):
-            return self.rec_activation(self.Wr(prev_z) + self.Win(v))
-        else:
-            return self.Wr(self.rec_activation(prev_z)) + self.Win(self.rec_activation(v))
+        return self.rec_activation(self.Wr(prev_z) + self.Win(v))
         
     def decode(self, z):
-        if not isinstance(self.out_activation, utils.Tanh):
-            return self.out_activation(self.Wout(z))
-        else:
-            return self.Wout(self.out_activation(z))
+        return self.out_activation(self.Wout(z))
 
     def inference_step(self, inf_lr, v, prev_z):
-        """Tale a single inference step"""
+        """Take a single inference step"""
         Wout = self.Wout.weight.detach().clone() # shape [Np, Ng]
         if isinstance(self.out_activation, utils.Softmax):
             delta = self.err_z - (self.out_activation.deriv(self.Wout(self.z)) @ self.err_x.unsqueeze(-1)).squeeze(-1) @ Wout
-        elif isinstance(self.out_activation, utils.Sigmoid):
-            delta = self.err_z - (self.out_activation.deriv(self.Wout(self.z)) * self.err_x) @ Wout
         else:
-            delta = self.err_z - self.out_activation.deriv(self.z) * (self.err_x @ Wout)
+            delta = self.err_z - (self.out_activation.deriv(self.Wout(self.z)) * self.err_x) @ Wout
         delta += self.sparse_z * torch.sign(self.z)
         self.z = self.z - inf_lr * delta
 
@@ -233,12 +233,11 @@ class TemporalPCN(nn.Module):
                 
     def get_energy(self):
         """Returns the average (across batches) energy of the model"""
-        if isinstance(self.out_activation, utils.Softmax):
+        if self.loss == 'CE':
             obs_loss = F.cross_entropy(self.Wout(self.z), self.x)
-        elif isinstance(self.out_activation, utils.Sigmoid):
+        elif self.loss == 'BCE':
             obs_loss = F.binary_cross_entropy_with_logits(self.Wout(self.z), self.x)
         else:
-            # obs_loss = F.mse_loss(self.decode(self.z), self.x)
             obs_loss = torch.sum(self.err_x**2, -1).mean()
         latent_loss = torch.sum(self.err_z**2, -1).mean()
         energy = obs_loss + latent_loss
