@@ -95,7 +95,6 @@ class Trainer(object):
             dataloader = get_traj_loader(path, self.options)
 
         if self.options.is_wandb:
-            wandb.login(key='d7c2482e95aefda61bfabc27245c37c7aec6ba24')
             wandb.init(project='place-cell-rnn', config=self.options)
         for epoch_idx in range(self.n_epochs):
             epoch_loss = 0
@@ -273,7 +272,6 @@ class PCTrainer(object):
             dataloader = get_traj_loader(path, self.options)
 
         if self.options.is_wandb:
-            wandb.login(key='d7c2482e95aefda61bfabc27245c37c7aec6ba24')
             wandb.init(project='place-cell-tpc', config=self.options)
         for epoch_idx in range(self.n_epochs):
             epoch_loss = 0
@@ -324,13 +322,22 @@ class PCTrainer(object):
 
             if save and (epoch_idx + 1) % self.options.save_every == 0:
                 # Save checkpoint
-                ckpt_path = os.path.join(
-                    self.ckpt_dir, 
-                    f'epoch_{epoch_idx}.pth'
-                )
-                torch.save(self.model.state_dict(), ckpt_path)
                 torch.save(
-                    self.model.state_dict(), 
+                    {
+                        'init_model': self.init_model.state_dict(),
+                        'model': self.model.state_dict(),
+                    }, 
+                    os.path.join(
+                        self.ckpt_dir,
+                        f'epoch_{epoch_idx + 1}.pth'
+                    )
+                )
+
+                torch.save(
+                    {
+                        'init_model': self.init_model.state_dict(),
+                        'model': self.model.state_dict(),
+                    }, 
                     os.path.join(
                         self.ckpt_dir,
                         'most_recent_model.pth'
