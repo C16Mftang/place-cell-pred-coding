@@ -95,6 +95,7 @@ class Trainer(object):
             dataloader = get_traj_loader(path, self.options)
 
         if self.options.is_wandb:
+            wandb.login(key='d7c2482e95aefda61bfabc27245c37c7aec6ba24')
             wandb.init(project='place-cell-rnn', config=self.options)
         for epoch_idx in range(self.n_epochs):
             epoch_loss = 0
@@ -272,6 +273,7 @@ class PCTrainer(object):
             dataloader = get_traj_loader(path, self.options)
 
         if self.options.is_wandb:
+            wandb.login(key='d7c2482e95aefda61bfabc27245c37c7aec6ba24')
             wandb.init(project='place-cell-tpc', config=self.options)
         for epoch_idx in range(self.n_epochs):
             epoch_loss = 0
@@ -330,7 +332,7 @@ class PCTrainer(object):
                 torch.save(
                     self.model.state_dict(), 
                     os.path.join(
-                        self.options.ckpt_dir,
+                        self.ckpt_dir,
                         'most_recent_model.pth'
                     )
                 )
