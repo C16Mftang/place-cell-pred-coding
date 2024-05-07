@@ -10,6 +10,8 @@ import utils
 import torch
 import os
 import model as m
+from tqdm import tqdm
+
 
 def concat_images(images, image_width, spacer_size):
     """ Concat image horizontally with spacer """
@@ -81,7 +83,7 @@ def compute_ratemaps(
         idxs=None,
     ):
     '''Compute spatial firing fields'''
-    if Ng > 64:
+    if Ng > 64 and options.mode == 'train':
         Ng = 64
 
     if not n_avg:
@@ -97,7 +99,7 @@ def compute_ratemaps(
     activations = np.zeros([Ng, res, res]) 
     counts  = np.zeros([res, res])
 
-    for index in range(n_avg):
+    for index in tqdm(range(n_avg)):
         # pos_batch: [batch_size, sequence_length, 2]
         inputs, _, pos_batch = trajectory_generator.get_test_batch()
 
@@ -330,6 +332,27 @@ def plot_2d_ratemaps(rate_map, options, n_col=4):
         # ax.set_title(f'Grid Cell {i+1}')
     plt.tight_layout()
     plt.savefig(os.path.join(options.save_dir, '2d_ratemaps.png'))
+
+def plot_all_ratemaps(rate_map, options):
+    n_col = 16
+    Ng_per_file = 256
+    n_files = options.Ng // Ng_per_file
+
+    all_dir = os.path.join(options.save_dir, 'all_maps')
+    if not os.path.exists(all_dir):
+        os.makedirs(all_dir)
+
+    for i in tqdm(range(n_files)):
+        rm = rate_map[i*Ng_per_file:(i+1)*Ng_per_file] # [Ng_per_file, res, res]
+        fig, axes = plt.subplots(Ng_per_file//n_col, n_col, figsize=(n_col, Ng_per_file//n_col))
+        for j, ax in enumerate(axes.flatten()):
+            r = (rm[j] - rm[j].min()) / (rm[j].max() - rm[j].min())
+            ax.imshow(r, cmap='jet')
+            ax.set_xticks([])
+            ax.set_yticks([])
+        plt.tight_layout()
+        plt.savefig(os.path.join(all_dir, f'2d_ratemaps_{i}.png'))
+        plt.close(fig)
 
 def plot_loss_err(trainer, options):
     plt.figure(figsize=(12,3))

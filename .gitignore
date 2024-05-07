@@ -8,3 +8,4 @@ predictive_coding/__pycache__/*
 *.sh
 /output/*
 /wandb/*
+*.txt

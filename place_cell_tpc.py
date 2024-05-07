@@ -13,7 +13,7 @@ from trainer import PCTrainer
 from visualize import *
 import utils
 
-parser = argparse.ArgumentParser()
+parser = argparse.ArgumentParser(fromfile_prefix_chars="@")
 parser.add_argument('--device', type=str, default='cuda:0', help='Device to use')
 parser.add_argument('--oned', type=lambda x: (str(x).lower() == 'true'), default=False, help='Use one-dimensional place cells')
 parser.add_argument('--Np', type=int, default=512, help='Number of place cells')
@@ -47,30 +47,50 @@ parser.add_argument('--save', type=lambda x: (str(x).lower() == 'true'), default
 parser.add_argument('--save_every', type=int, default=100, help='Save the model every n epochs')
 parser.add_argument('--loss', type=str, default='MSE', help='Loss function for training')
 parser.add_argument('--is_wandb', type=lambda x: (str(x).lower() == 'true'), default=False, help='Use wandb for logging')
+parser.add_argument('--mode', type=str, default='train', help='Mode for running the model; input run folder name for model inspection')
 options = parser.parse_args()
 
-# save directory
-now = time.strftime('%b-%d-%Y-%H-%M-%S', time.gmtime(time.time()))
-if options.restore is not None:
-    now = options.restore
-options.save_dir = os.path.join('./results/tpc', now)
+if options.mode == 'train':
+    # save directory
+    now = time.strftime('%b-%d-%Y-%H-%M-%S', time.gmtime(time.time()))
+    if options.restore is not None:
+        now = options.restore
+    options.save_dir = os.path.join('./results/tpc', now)
 
-if not os.path.exists(options.save_dir):
-    os.makedirs(options.save_dir)
-print('Saving to:', options.save_dir)
+    if not os.path.exists(options.save_dir):
+        os.makedirs(options.save_dir)
+    print('Saving to:', options.save_dir)
 
-utils.save_options_to_json(options, os.path.join(options.save_dir, 'configs.json'))
+    utils.save_options_to_json(options, os.path.join(options.save_dir, 'configs.json'))
 
-# define place cells, trajectory generator, model, and trainer
-place_cell = PlaceCells(options)
-generator = TrajectoryGenerator(options, place_cell)
-model = TemporalPCN(options).to(options.device)
-init_model = HierarchicalPCN(options).to(options.device)
-trainer = PCTrainer(options, model, init_model, generator, place_cell, restore=options.restore)
+    # define place cells, trajectory generator, model, and trainer
+    place_cell = PlaceCells(options)
+    generator = TrajectoryGenerator(options, place_cell)
+    model = TemporalPCN(options).to(options.device)
+    init_model = HierarchicalPCN(options).to(options.device)
+    trainer = PCTrainer(options, model, init_model, generator, place_cell, restore=options.restore)
 
-trainer.train(preloaded_data=options.preloaded_data, save=options.save)
-plot_place_cells(place_cell, options, res=30)
-plot_2d_performance(place_cell, generator, options, trainer)
-rate_map = compute_ratemaps(model, trainer, generator, options, res=20, n_avg=200, Ng=options.Ng)
-plot_2d_ratemaps(rate_map, options, n_col=4)
-plot_loss_err(trainer, options)
+    trainer.train(preloaded_data=options.preloaded_data, save=options.save)
+    plot_place_cells(place_cell, options, res=30)
+    plot_2d_performance(place_cell, generator, options, trainer)
+    rate_map = compute_ratemaps(model, trainer, generator, options, res=20, n_avg=200, Ng=options.Ng)
+    plot_2d_ratemaps(rate_map, options, n_col=4)
+    plot_loss_err(trainer, options)
+
+else:
+    now = options.mode
+    save_dir = os.path.join('./results/tpc', now)
+    ckpt = torch.load(os.path.join(save_dir, 'models', 'most_recent_model.pth'))
+    options.save_dir = save_dir
+    model = TemporalPCN(options).to(options.device)
+    init_model = HierarchicalPCN(options).to(options.device)
+    model.load_state_dict(ckpt['model'])
+    init_model.load_state_dict(ckpt['init_model'])
+
+    place_cell = PlaceCells(options)
+    generator = TrajectoryGenerator(options, place_cell)
+    trainer = PCTrainer(options, model, init_model, generator, place_cell, restore=False)
+    print('Generating rate maps...')
+    rate_map = compute_ratemaps(model, trainer, generator, options, res=30, n_avg=200, Ng=options.Ng)
+    print('Plotting rate maps...')
+    plot_all_ratemaps(rate_map, options)
