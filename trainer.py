@@ -142,7 +142,7 @@ class Trainer(object):
                 torch.save(
                     self.model.state_dict(), 
                     os.path.join(
-                        self.options.ckpt_dir,
+                        self.ckpt_dir,
                         'most_recent_model.pth'
                     )
                 )
