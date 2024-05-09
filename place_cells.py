@@ -61,8 +61,8 @@ class PlaceCells(object):
 
             # Shift and scale outputs so that they lie in [0,1].
             min_output,_ = outputs.min(-1,keepdims=True)
-            outputs += torch.abs(min_output)
-            outputs /= outputs.sum(-1, keepdims=True)
+            outputs += torch.abs(min_output) # ensures all outputs are positive
+            outputs /= outputs.sum(-1, keepdims=True) # ensures all outputs sum to 1, in [0,1]
         return outputs
 
     def get_nearest_cell_pos(self, activation, k=3):
