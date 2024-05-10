@@ -11,6 +11,7 @@ import torch
 import os
 import model as m
 from tqdm import tqdm
+from scores import GridScorer
 
 
 def concat_images(images, image_width, spacer_size):
@@ -142,6 +143,21 @@ def compute_ratemaps(
 
     return activations
 
+def compute_grid_scores(lo_res, rate_map_lo_res, options):
+    starts = [0.2] * 10
+    ends = np.linspace(0.4, 1.0, num=10)
+    box_width = options.box_width
+    box_height = options.box_height
+    coord_range = ((-box_width/2, box_width/2), (-box_height/2, box_height/2))
+    masks_parameters = zip(starts, ends.tolist())
+    scorer = GridScorer(lo_res, coord_range, masks_parameters)
+
+    score_60, score_90, max_60_mask, max_90_mask, sac, max_60_ind = zip(
+        *[scorer.get_scores(rm) for rm in tqdm(rate_map_lo_res)]
+    )
+
+    idx = np.flip(np.argsort(score_60))
+    return idx, [score_60[i] for i in idx]
 
 # get grid cell rate maps
 def compute_1d_ratemaps(
@@ -354,6 +370,18 @@ def plot_all_ratemaps(rate_map, options):
         plt.savefig(os.path.join(all_dir, f'2d_ratemaps_{i}.png'))
         plt.close(fig)
 
+def plot_top_ratemaps(rate_map, scores, options, n_col=8):
+    Ng = len(rate_map)
+    fig, ax = plt.subplots(n_col, Ng//n_col, figsize=(Ng//n_col, n_col))
+    for i, ax in enumerate(ax.flatten()):
+        r = (rate_map[i] - rate_map[i].min()) / (rate_map[i].max() - rate_map[i].min())
+        ax.imshow(r, cmap='jet')
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_title(f'{scores[i]:.2f}')
+    plt.tight_layout()
+    plt.savefig(os.path.join(options.save_dir, 'top_ratemaps.png'))
+
 def plot_loss_err(trainer, options):
     plt.figure(figsize=(12,3))
     plt.subplot(121)
@@ -382,3 +410,11 @@ def plot_place_cells(place_cell, options, res, n_show=5):
         axes[i].set_xticks([])
         axes[i].set_yticks([])
     plt.savefig(os.path.join(options.save_dir, 'place_cell_examples'))
+
+def plot_weights(w, options):
+    # plot the weights of the model
+    fig, axes = plt.subplots(1, 1, figsize=(10, 10))
+    axes.imshow(w, cmap='jet')
+    axes.set_xticks([])
+    axes.set_yticks([])
+    plt.savefig(os.path.join(options.save_dir, 'weights.png'))
