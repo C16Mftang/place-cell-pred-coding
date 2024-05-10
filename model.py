@@ -106,6 +106,8 @@ class HierarchicalPCN(nn.Module):
             self.out_activation = utils.Softmax()
         elif options.out_activation == 'tanh':
             self.out_activation = utils.Tanh()
+        elif options.out_activation == 'sigmoid':
+            self.out_activation = utils.Sigmoid()
         self.loss = options.loss
 
     def set_nodes(self, inp):
