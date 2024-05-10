@@ -5,6 +5,7 @@ import os
 import time
 import matplotlib.pyplot as plt
 import argparse
+import json
 
 from place_cells import PlaceCells
 from trajectory_generator import TrajectoryGenerator
@@ -48,6 +49,7 @@ parser.add_argument('--save_every', type=int, default=100, help='Save the model 
 parser.add_argument('--loss', type=str, default='MSE', help='Loss function for training')
 parser.add_argument('--is_wandb', type=lambda x: (str(x).lower() == 'true'), default=False, help='Use wandb for logging')
 parser.add_argument('--mode', type=str, default='train', help='Mode for running the model; input run folder name for model inspection')
+parser.add_argument('--plot_all', type=lambda x: (str(x).lower() == 'true'), default=False, help='Plot all rate maps')
 options = parser.parse_args()
 
 if options.mode == 'train':
@@ -80,6 +82,18 @@ if options.mode == 'train':
 else:
     now = options.mode
     save_dir = os.path.join('./results/tpc', now)
+
+    # load the configuration file to args
+    t_args = argparse.Namespace()
+    d = json.load(open(os.path.join(save_dir, 'configs.json')))
+    for k in list(d.keys()):
+        if k == '_get_args' or k == '_get_kwargs':
+            del d[k]
+    t_args.__dict__.update(d)
+    options = parser.parse_args(namespace=t_args)
+    print(options.__dict__)
+
+    # load the model
     ckpt = torch.load(os.path.join(save_dir, 'models', 'most_recent_model.pth'))
     options.save_dir = save_dir
     model = TemporalPCN(options).to(options.device)
@@ -87,10 +101,31 @@ else:
     model.load_state_dict(ckpt['model'])
     init_model.load_state_dict(ckpt['init_model'])
 
+    print('Plotting weights...')
+    Wr = model.Wr.weight.detach().cpu().numpy()
+    plot_weights(Wr, options)
+
     place_cell = PlaceCells(options)
     generator = TrajectoryGenerator(options, place_cell)
     trainer = PCTrainer(options, model, init_model, generator, place_cell, restore=False)
     print('Generating rate maps...')
-    rate_map = compute_ratemaps(model, trainer, generator, options, res=30, n_avg=200, Ng=options.Ng)
-    print('Plotting rate maps...')
-    plot_all_ratemaps(rate_map, options)
+    rate_map = compute_ratemaps(
+        model, trainer, generator, options, res=30, n_avg=200, Ng=options.Ng
+    )
+
+    if options.plot_all:
+        print('Plotting all rate maps...')
+        plot_all_ratemaps(rate_map, options)
+
+    # calculate grid scores
+    print('Generating low resolution rate maps...')
+    lo_res = 20
+    rate_map_lo_res = compute_ratemaps(
+        model, trainer, generator, options, res=lo_res, n_avg=200, Ng=options.Ng
+    )
+    # scores are already sorted in descending order
+    print('Calculating grid scores...')
+    idx, scores = compute_grid_scores(lo_res, rate_map_lo_res, options) # descending order
+    # select the top grid cells
+    top_rms = rate_map[idx[:64]]
+    plot_top_ratemaps(top_rms, scores, options)
