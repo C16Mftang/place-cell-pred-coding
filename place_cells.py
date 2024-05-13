@@ -16,6 +16,7 @@ class PlaceCells(object):
         self.DoG = options.DoG
         self.device = options.device
         self.softmax = torch.nn.Softmax(dim=-1)
+        self.normalize_pc = options.normalize_pc
         
         # Randomly tile place cell centers across environment
         # i.e., Np place cells, each with a randomly chosen center
@@ -59,10 +60,19 @@ class PlaceCells(object):
             # beta=1/2/np.pi/self.sigma**2/self.surround_scale, or use softmax.
             outputs -= self.softmax(-norm2/(2*self.surround_scale*self.sigma**2))
 
-            # Shift and scale outputs so that they lie in [0,1].
-            min_output,_ = outputs.min(-1,keepdims=True)
-            outputs += torch.abs(min_output) # ensures all outputs are positive
-            outputs /= outputs.sum(-1, keepdims=True) # ensures all outputs sum to 1, in [0,1]
+            if self.normalize_pc == "softmax":
+                # Shift and scale outputs so that they lie in [0,1] and sum up to 1.
+                min_output,_ = outputs.min(-1,keepdims=True)
+                outputs += torch.abs(min_output) # ensures all outputs are positive
+                outputs /= outputs.sum(-1, keepdims=True) # ensures all outputs sum to 1, in [0,1]
+            else:
+                min_val, _ = outputs.min(-1, keepdims=True)
+                max_val, _ = outputs.max(-1, keepdims=True)
+                outputs = (outputs - min_val) / (max_val - min_val + 1e-8)
+
+                if self.normalize_pc == 'tanh':
+                    outputs = outputs * 2 - 1
+
         return outputs
 
     def get_nearest_cell_pos(self, activation, k=3):

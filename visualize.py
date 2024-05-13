@@ -341,7 +341,7 @@ def plot_2d_ratemaps(rate_map, options, n_col=4):
     Ng = 64 if options.Ng > 64 else options.Ng
     fig, ax = plt.subplots(n_col, Ng//n_col, figsize=(Ng//n_col, n_col))
     for i, ax in enumerate(ax.flatten()):
-        r = (rate_map[i] - rate_map[i].min()) / (rate_map[i].max() - rate_map[i].min())
+        r = (rate_map[i] - rate_map[i].min()) / (rate_map[i].max() - rate_map[i].min() + 1e-8)
         ax.imshow(r, cmap='jet')
         ax.set_xticks([])
         ax.set_yticks([])
@@ -405,10 +405,11 @@ def plot_place_cells(place_cell, options, res, n_show=5):
     fig, axes = plt.subplots(1, n_show, figsize=(n_show*2, 2))
     for i in range(n_show):
         # notice the interpolation arg, which visually makes these 'real' place fields
-        axes[i].imshow(grid_pc[:,:,select[i]].cpu().numpy())
+        im = axes[i].imshow(grid_pc[:,:,select[i]].cpu().numpy())
         axes[i].set_title('Place cell {}'.format(select[i]))
         axes[i].set_xticks([])
         axes[i].set_yticks([])
+    fig.colorbar(im, ax=axes.ravel().tolist(), orientation='vertical', shrink=0.6)
     plt.savefig(os.path.join(options.save_dir, 'place_cell_examples'))
 
 def plot_weights(w, options):

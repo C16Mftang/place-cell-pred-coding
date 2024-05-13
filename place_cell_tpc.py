@@ -47,6 +47,7 @@ parser.add_argument('--preloaded_data', type=lambda x: (str(x).lower() == 'true'
 parser.add_argument('--save', type=lambda x: (str(x).lower() == 'true'), default=False, help='Save the trained model')
 parser.add_argument('--save_every', type=int, default=100, help='Save the model every n epochs')
 parser.add_argument('--loss', type=str, default='MSE', help='Loss function for training')
+parser.add_argument('--normalize_pc', type=str, default='softmax', help='transformation applied to place cells in generation')
 parser.add_argument('--is_wandb', type=lambda x: (str(x).lower() == 'true'), default=False, help='Use wandb for logging')
 parser.add_argument('--mode', type=str, default='train', help='Mode for running the model; input run folder name for model inspection')
 parser.add_argument('--plot_all', type=lambda x: (str(x).lower() == 'true'), default=False, help='Plot all rate maps')
