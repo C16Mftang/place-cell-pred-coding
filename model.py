@@ -88,6 +88,7 @@ class RNN(torch.nn.Module):
         loss += self.weight_decay * (self.RNN.weight_hh_l0**2).sum()
 
         # Compute decoding error
+        preds = F.softmax(preds, dim=-1)
         pred_pos = self.place_cells.get_nearest_cell_pos(preds)
         err = torch.sqrt(((pos - pred_pos)**2).sum(-1)).mean()
 

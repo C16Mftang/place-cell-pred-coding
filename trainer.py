@@ -290,6 +290,9 @@ class PCTrainer(object):
             
                 energy, loss = self.train_step(inputs, pc_outputs, pos)
                 pred_xs, _ = self.predict(inputs)
+
+                # this softmax intends to find the highest activities among neurons,
+                # whcih is different from a nonlinearity
                 if not isinstance(self.options.out_activation, utils.Softmax):
                     pred_xs = F.softmax(pred_xs, dim=-1)
 
