@@ -186,16 +186,17 @@ class PCTrainer(object):
         self.err = []
         self.energy = []
 
-        # Set up checkpoints
-        self.ckpt_dir = os.path.join(options.save_dir, 'models')
-        ckpt_path = os.path.join(self.ckpt_dir, 'most_recent_model.pth')
-        if restore and os.path.isdir(self.ckpt_dir) and os.path.isfile(ckpt_path):
-            self.model.load_state_dict(torch.load(ckpt_path))
-            print("Restored trained model from {}".format(ckpt_path))
-        else:
-            if not os.path.isdir(self.ckpt_dir):
-                os.makedirs(self.ckpt_dir, exist_ok=True)
-            print("Initializing new model from scratch.")
+        # Set up checkpoints when not tuning hyperparameters
+        if options.sweep == False:
+            self.ckpt_dir = os.path.join(options.save_dir, 'models')
+            ckpt_path = os.path.join(self.ckpt_dir, 'most_recent_model.pth')
+            if restore and os.path.isdir(self.ckpt_dir) and os.path.isfile(ckpt_path):
+                self.model.load_state_dict(torch.load(ckpt_path))
+                print("Restored trained model from {}".format(ckpt_path))
+            else:
+                if not os.path.isdir(self.ckpt_dir):
+                    os.makedirs(self.ckpt_dir, exist_ok=True)
+                print("Initializing new model from scratch.")
 
     def train_step(self, inputs, pc_outputs, pos):
         ''' 
@@ -271,7 +272,7 @@ class PCTrainer(object):
 
             dataloader = get_traj_loader(path, self.options)
 
-        if self.options.is_wandb:
+        if self.options.is_wandb == True and self.options.sweep == False:
             wandb.init(project='place-cell-tpc', config=self.options)
         for epoch_idx in range(self.n_epochs):
             epoch_loss = 0
