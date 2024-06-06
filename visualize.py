@@ -11,7 +11,7 @@ import torch
 import os
 import model as m
 from tqdm import tqdm
-from scores import GridScorer
+from scores import GridScorer, border_score
 
 
 def concat_images(images, image_width, spacer_size):
@@ -158,6 +158,13 @@ def compute_grid_scores(lo_res, rate_map_lo_res, options):
 
     idx = np.flip(np.argsort(score_60))
     return idx, [score_60[i] for i in idx]
+
+def compute_border_scores(lo_res, rate_map_lo_res, options):
+    scores = [
+        border_score(rm, lo_res, options.box_width)[0] for rm in rate_map_lo_res
+    ]
+    idx = np.flip(np.argsort(scores))
+    return idx, [scores[i] for i in idx]
 
 # get grid cell rate maps
 def compute_1d_ratemaps(
@@ -349,12 +356,12 @@ def plot_2d_ratemaps(rate_map, options, n_col=4):
     plt.tight_layout()
     plt.savefig(os.path.join(options.save_dir, '2d_ratemaps.png'))
 
-def plot_all_ratemaps(rate_map, options):
-    n_col = 16
-    Ng_per_file = 256
+def plot_all_ratemaps(rate_map, options, scores=None, dir='all_maps'):
+    n_col = 8
+    Ng_per_file = 64
     n_files = options.Ng // Ng_per_file
 
-    all_dir = os.path.join(options.save_dir, 'all_maps')
+    all_dir = os.path.join(options.save_dir, dir)
     if not os.path.exists(all_dir):
         os.makedirs(all_dir)
 
@@ -366,6 +373,8 @@ def plot_all_ratemaps(rate_map, options):
             ax.imshow(r, cmap='jet')
             ax.set_xticks([])
             ax.set_yticks([])
+            if scores:
+                ax.set_title(f'{scores[j+i*Ng_per_file]:.2f}')
         plt.tight_layout()
         plt.savefig(os.path.join(all_dir, f'2d_ratemaps_{i}.png'))
         plt.close(fig)
