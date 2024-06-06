@@ -15,7 +15,7 @@ from visualize import *
 import utils
 
 parser = argparse.ArgumentParser(fromfile_prefix_chars="@")
-parser.add_argument('--device', type=str, default='cuda:0', help='Device to use')
+parser.add_argument('--device', type=str, default='cuda', help='Device to use')
 parser.add_argument('--oned', type=lambda x: (str(x).lower() == 'true'), default=False, help='Use one-dimensional place cells')
 parser.add_argument('--Np', type=int, default=512, help='Number of place cells')
 parser.add_argument('--Ng', type=int, default=2048, help='Number of grid cells')
@@ -25,11 +25,11 @@ parser.add_argument('--box_width', type=float, default=1.6, help='Width of the e
 parser.add_argument('--box_height', type=float, default=1.6, help='Height of the environment box')
 parser.add_argument('--place_cell_rf', type=float, default=0.12, help='Place cell receptive field size')
 parser.add_argument('--surround_scale', type=int, default=2, help='Scale factor for the surround inhibition')
-parser.add_argument('--periodic', type=lambda x: (str(x).lower() == 'true'), default=True, help='Use periodic boundary conditions')
-parser.add_argument('--sequence_length', type=int, default=20, help='Length of the trajectory sequence')
+parser.add_argument('--periodic', type=lambda x: (str(x).lower() == 'true'), default=False, help='Use periodic boundary conditions')
+parser.add_argument('--sequence_length', type=int, default=10, help='Length of the trajectory sequence')
 parser.add_argument('--dt', type=float, default=0.02, help='Time step size')
 parser.add_argument('--batch_size', type=int, default=500, help='Batch size for training')
-parser.add_argument('--n_epochs', type=int, default=200, help='Number of training epochs')
+parser.add_argument('--n_epochs', type=int, default=120, help='Number of training epochs')
 parser.add_argument('--n_steps', type=int, default=100, help='Number of steps in each trajectory')
 parser.add_argument('--learning_rate', type=float, default=1e-4, help='Learning rate for optimization')
 parser.add_argument('--weight_decay', type=float, default=1e-4, help='Weight decay for optimization')
@@ -40,17 +40,18 @@ parser.add_argument('--lambda_z_init', type=float, default=0, help='Initial weig
 parser.add_argument('--inf_iters', type=int, default=20, help='Number of inference iterations')
 parser.add_argument('--test_inf_iters', type=int, default=20, help='Number of inference iterations for testing')
 parser.add_argument('--inf_lr', type=float, default=2e-2, help='Learning rate for inference')
-parser.add_argument('--out_activation', type=str, default='tanh', help='Activation function for the output layer')
-parser.add_argument('--rec_activation', type=str, default='tanh', help='Activation function for the recurrent layer')
+parser.add_argument('--out_activation', type=str, default='softmax', help='Activation function for the output layer')
+parser.add_argument('--rec_activation', type=str, default='relu', help='Activation function for the recurrent layer')
 parser.add_argument('--restore', type=str, default=None, help='Timestamp of the saved model to restore')
 parser.add_argument('--preloaded_data', type=lambda x: (str(x).lower() == 'true'), default=False, help='Use preloaded data for training')
-parser.add_argument('--save', type=lambda x: (str(x).lower() == 'true'), default=False, help='Save the trained model')
-parser.add_argument('--save_every', type=int, default=100, help='Save the model every n epochs')
-parser.add_argument('--loss', type=str, default='MSE', help='Loss function for training')
+parser.add_argument('--save', type=lambda x: (str(x).lower() == 'true'), default=True, help='Save the trained model')
+parser.add_argument('--save_every', type=int, default=50, help='Save the model every n epochs')
+parser.add_argument('--loss', type=str, default='CE', help='Loss function for training')
 parser.add_argument('--normalize_pc', type=str, default='softmax', help='transformation applied to place cells in generation')
 parser.add_argument('--is_wandb', type=lambda x: (str(x).lower() == 'true'), default=False, help='Use wandb for logging')
 parser.add_argument('--sweep', type=lambda x: (str(x).lower() == 'true'), default=False, help='Hyperparameter tune')
 parser.add_argument('--mode', type=str, default='train', help='Mode for running the model; input run folder name for model inspection')
+parser.add_argument('--no_velocity', type=lambda x: (str(x).lower() == 'true'), default=False, help='Without velocity input')
 options = parser.parse_args()
 
 if options.mode == 'train':
@@ -121,10 +122,10 @@ else:
         model, trainer, generator, options, res=lo_res, n_avg=200, Ng=options.Ng
     )
     # scores are already sorted in descending order
-    # print('Calculating grid scores...')
-    # idx, scores = compute_grid_scores(lo_res, rate_map_lo_res, options) # descending order
-    # # select the top grid cells
-    # plot_all_ratemaps(rate_map[idx], options, scores)
+    print('Calculating grid scores...')
+    idx, scores = compute_grid_scores(lo_res, rate_map_lo_res, options) # descending order
+    # select the top grid cells
+    plot_all_ratemaps(rate_map[idx], options, scores)
 
     # border score
     print('Calculating border scores...')
