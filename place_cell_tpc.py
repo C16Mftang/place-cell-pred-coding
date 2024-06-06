@@ -51,7 +51,6 @@ parser.add_argument('--normalize_pc', type=str, default='softmax', help='transfo
 parser.add_argument('--is_wandb', type=lambda x: (str(x).lower() == 'true'), default=False, help='Use wandb for logging')
 parser.add_argument('--sweep', type=lambda x: (str(x).lower() == 'true'), default=False, help='Hyperparameter tune')
 parser.add_argument('--mode', type=str, default='train', help='Mode for running the model; input run folder name for model inspection')
-parser.add_argument('--plot_all', type=lambda x: (str(x).lower() == 'true'), default=False, help='Plot all rate maps')
 options = parser.parse_args()
 
 if options.mode == 'train':
@@ -115,10 +114,6 @@ else:
         model, trainer, generator, options, res=30, n_avg=200, Ng=options.Ng
     )
 
-    if options.plot_all:
-        print('Plotting all rate maps...')
-        plot_all_ratemaps(rate_map, options)
-
     # calculate grid scores
     print('Generating low resolution rate maps...')
     lo_res = 20
@@ -126,8 +121,12 @@ else:
         model, trainer, generator, options, res=lo_res, n_avg=200, Ng=options.Ng
     )
     # scores are already sorted in descending order
-    print('Calculating grid scores...')
-    idx, scores = compute_grid_scores(lo_res, rate_map_lo_res, options) # descending order
-    # select the top grid cells
-    top_rms = rate_map[idx[:64]]
-    plot_top_ratemaps(top_rms, scores, options)
+    # print('Calculating grid scores...')
+    # idx, scores = compute_grid_scores(lo_res, rate_map_lo_res, options) # descending order
+    # # select the top grid cells
+    # plot_all_ratemaps(rate_map[idx], options, scores)
+
+    # border score
+    print('Calculating border scores...')
+    idx_border, scores_border = compute_border_scores(lo_res, rate_map_lo_res, options)
+    plot_all_ratemaps(rate_map[idx_border], options, scores_border, dir='all_maps_border')
