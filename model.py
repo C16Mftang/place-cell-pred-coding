@@ -111,6 +111,9 @@ class HierarchicalPCN(nn.Module):
             self.out_activation = utils.Sigmoid()
         self.loss = options.loss
 
+    def set_sparsity(self, sparsity):
+        self.sparse_z = sparsity
+
     def set_nodes(self, inp):
         # intialize the value nodes
         self.z = self.mu.clone()
@@ -424,3 +427,84 @@ class MultilayertPC(nn.Module):
         energy += self.weight_decay * torch.sum(self.Wr.weight**2)
 
         return energy
+
+class MultilayerPCN(nn.Module):
+    def __init__(self, nodes, nonlin, lamb=0., use_bias=False):
+        super().__init__()
+        self.n_layers = len(nodes)
+        self.layers = nn.Sequential()
+        for l in range(self.n_layers-1):
+            self.layers.add_module(f'layer_{l}', nn.Linear(
+                in_features=nodes[l],
+                out_features=nodes[l+1],
+                bias=use_bias,
+            ))
+
+        self.mem_dim = nodes[0]
+        self.memory = nn.Parameter(torch.zeros((nodes[0],)))
+
+        if nonlin == 'tanh':
+            nonlin = utils.Tanh()
+        elif nonlin == 'teLU':
+            nonlin = utils.ReLU()
+        elif nonlin == 'linear':
+            nonlin = utils.Linear()
+        self.nonlins = [nonlin] * (self.n_layers - 1)
+        self.use_bias = use_bias
+
+        # initialize nodes
+        self.val_nodes = [[] for _ in range(self.n_layers)]
+        # self.preds = [[] for _ in range(self.n_layers)]
+        self.errs = [[] for _ in range(self.n_layers)]
+
+        # sparse penalty
+        self.lamb = lamb
+
+    def set_sparsity(self, sparsity):
+        self.lamb = sparsity
+
+    def get_inf_losses(self):
+        return self.inf_losses # inf_iters,
+
+    def update_err_nodes(self):
+        for l in range(0, self.n_layers):
+            if l == 0:
+                self.errs[l] = self.val_nodes[l] - self.memory
+            else:
+                preds = self.layers[l-1](self.nonlins[l-1](self.val_nodes[l-1]))
+                self.errs[l] = self.val_nodes[l] - preds
+
+    def update_val_nodes(self, inf_lr):
+        for l in range(0, self.n_layers-1):
+            derivative = self.nonlins[l].deriv(self.val_nodes[l])
+            # sparse penalty
+            penalty = self.lamb if l == 0 else 0.
+            delta = -self.errs[l] - penalty * torch.sign(self.val_nodes[l]) + derivative * torch.matmul(self.errs[l+1], self.layers[l].weight)
+            self.val_nodes[l] = F.relu(self.val_nodes[l] + inf_lr * delta)
+
+    def set_nodes(self, batch_inp):
+        # computing val nodes
+        self.val_nodes[0] = self.memory.clone()
+        for l in range(1, self.n_layers-1):
+            self.val_nodes[l] = self.layers[l-1](self.nonlins[l-1](self.val_nodes[l-1]))
+        self.val_nodes[-1] = batch_inp.clone()
+
+        # computing error nodes
+        self.update_err_nodes()
+
+    def inference(self, batch_inp, n_iters, inf_lr):
+        self.set_nodes(batch_inp)
+        self.inf_losses = []
+
+        for itr in range(n_iters):
+            with torch.no_grad():
+                self.update_val_nodes(inf_lr)
+            self.update_err_nodes()
+            self.inf_losses.append(self.get_energy().item())
+
+    def get_energy(self):
+        """Function to obtain the sum of all layers' squared MSE"""
+        total_energy = 0
+        for l in range(self.n_layers):
+            total_energy += torch.sum(self.errs[l] ** 2) # average over batch and feature dimensions
+        return total_energy
