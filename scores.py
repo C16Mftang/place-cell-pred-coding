@@ -146,7 +146,7 @@ class GridScorer(object):
             np.divide(seq1_x_seq2, n_bins),
             np.divide(np.multiply(sum_seq1, sum_seq2), n_bins_sq),
         )
-        x_coef = np.divide(covar, np.multiply(std_seq1, std_seq2))
+        x_coef = np.divide(covar, np.multiply(std_seq1, std_seq2) + 1e-9)
         x_coef = np.real(x_coef)
         x_coef = np.nan_to_num(x_coef)
         return x_coef
