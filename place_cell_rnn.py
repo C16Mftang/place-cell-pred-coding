@@ -10,6 +10,7 @@ from trajectory_generator import TrajectoryGenerator
 from model import RNN
 from trainer import Trainer
 from visualize import *
+from scores import border_score
 
 # Training hyperparameters to fully reproduce Sorscher et al. 2023
 parser = argparse.ArgumentParser(fromfile_prefix_chars="@")
@@ -41,10 +42,10 @@ parser.add_argument('--restore', type=str, default=None, help='Timestamp of the 
 parser.add_argument('--preloaded_data', type=lambda x: (str(x).lower() == 'true'), default=False, help='Whether to use preloaded data')
 parser.add_argument('--save', type=lambda x: (str(x).lower() == 'true'), default=False, help='Whether to save the model')
 parser.add_argument('--save_every', type=int, default=100, help='Save the model every n epochs')
-parser.add_argument('--loss', type=str, default='MSE', help='Loss function for training')
+parser.add_argument('--loss', type=str, default='CE', help='Loss function for training')
 parser.add_argument('--is_wandb', type=lambda x: (str(x).lower() == 'true'), default=False, help='Whether to use wandb for logging')
 parser.add_argument('--mode', type=str, default='train', help='Mode for running the model; input run folder name for model inspection')
-parser.add_argument('--plot_all', type=lambda x: (str(x).lower() == 'true'), default=False, help='Plot all rate maps')
+parser.add_argument('--normalize_pc', type=str, default='softmax', help='Transformation applied to place cells in generation')
 options = parser.parse_args()
 
 if options.mode == 'train':
@@ -105,9 +106,6 @@ else:
         model, trainer, generator, options, res=30, n_avg=200, Ng=options.Ng
     )
 
-    if options.plot_all:
-        print('Plotting all rate maps...')
-        plot_all_ratemaps(rate_map, options)
 
     # calculate grid scores
     print('Generating low resolution rate maps...')
@@ -119,5 +117,9 @@ else:
     print('Calculating grid scores...')
     idx, scores = compute_grid_scores(lo_res, rate_map_lo_res, options) # descending order
     # select the top grid cells
-    top_rms = rate_map[idx[:64]]
-    plot_top_ratemaps(top_rms, scores, options)
+    plot_all_ratemaps(rate_map[idx], options, scores)
+
+    # border score
+    print('Calculating border scores...')
+    idx_border, scores_border = compute_border_scores(lo_res, rate_map_lo_res, options)
+    plot_all_ratemaps(rate_map[idx_border], options, scores_border, dir='all_maps_border')
