@@ -171,6 +171,10 @@ class TemporalPCN(nn.Module):
         self.Win = nn.Linear(options.Nv, options.Ng, bias=False)
         self.Wout = nn.Linear(options.Ng, options.Np, bias=False)
 
+        if options.no_velocity:
+            self.Win.weight.data.fill_(0)
+            self.Win.weight.requires_grad = False
+
         self.sparse_z = options.lambda_z
         self.weight_decay = options.weight_decay
         if options.out_activation == 'softmax':
