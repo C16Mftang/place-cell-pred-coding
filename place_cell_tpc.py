@@ -126,6 +126,11 @@ else:
     idx, scores = compute_grid_scores(lo_res, rate_map_lo_res, options) # descending order
     # select the top grid cells
     plot_all_ratemaps(rate_map[idx], options, scores)
+    
+    # save scores
+    np.save(os.path.join(save_dir, 'grid_scores.npy'), scores)
+    # save top 64 grid cells
+    np.save(os.path.join(save_dir, 'top64_grid_cells.npy'), rate_map[idx[:64]])
 
     # border score
     print('Calculating border scores...')
