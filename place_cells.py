@@ -65,12 +65,13 @@ class PlaceCells(object):
                 min_output,_ = outputs.min(-1,keepdims=True)
                 outputs += torch.abs(min_output) # ensures all outputs are positive
                 outputs /= outputs.sum(-1, keepdims=True) # ensures all outputs sum to 1, in [0,1]
-            elif self.normalize_pc == "sigmoid":
+            else:
                 min_val, _ = outputs.min(-1, keepdims=True)
                 max_val, _ = outputs.max(-1, keepdims=True)
                 outputs = (outputs - min_val) / (max_val - min_val + 1e-8)
-            elif self.normalize_pc == 'tanh':
-                outputs = outputs
+
+                if self.normalize_pc == 'tanh':
+                    outputs = outputs * 2 - 1
 
         return outputs
 
