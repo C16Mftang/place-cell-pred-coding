@@ -47,8 +47,39 @@ class RNN(torch.nn.Module):
         init_state = self.encoder(p0)[None]
         g,_ = self.RNN(v, init_state)
         return g
-    
 
+    def init_h(self, p0):
+        return self.encoder(p0)[None]
+
+    def step_g(self, v, h):
+        '''
+        Perform truncated forward pass i.e. detach h after several steps.
+        Args:
+            v: Batch of 2d velocity inputs at this step with shape [batch_size, 1, 2].
+
+        Returns: 
+            g_total: Batch of grid cell activations with shape [batch_size, sequence_length, Ng].
+        '''
+        g, h = self.RNN(v, h)
+
+        return g, h
+
+    def compute_step_loss(self, g, pc_output, pos):
+        place_pred = self.out_activation(self.decoder(g))
+        if self.loss == 'CE':
+            loss = -(pc_output * torch.log(place_pred + 1e-9)).sum(-1).mean()
+        elif self.loss == 'MSE':
+            loss = torch.sum((place_pred - pc_output) ** 2, -1).mean()
+
+        loss += self.weight_decay * (self.RNN.weight_hh_l0**2).sum()
+
+        # Compute decoding error
+        place_pred = F.softmax(place_pred, dim=-1)
+        pred_pos = self.place_cells.get_nearest_cell_pos(place_pred)
+        err = torch.sqrt(((pos - pred_pos)**2).sum(-1)).mean()
+
+        return loss, err
+    
     def predict(self, inputs):
         '''
         Predict place cell code.
@@ -237,7 +268,7 @@ class TemporalPCN(nn.Module):
         """Run inference on the hidden state"""
         self.set_nodes(v, prev_z, p)
         for i in range(inf_iters):
-            with torch.no_grad():
+            with torch.no_grad(): # ensures self.z won't have grad when we call backward
                 self.inference_step(inf_lr, v, prev_z)
             self.update_err_nodes(v, prev_z)
                 

@@ -46,6 +46,7 @@ parser.add_argument('--loss', type=str, default='CE', help='Loss function for tr
 parser.add_argument('--is_wandb', type=lambda x: (str(x).lower() == 'true'), default=False, help='Whether to use wandb for logging')
 parser.add_argument('--mode', type=str, default='train', help='Mode for running the model; input run folder name for model inspection')
 parser.add_argument('--normalize_pc', type=str, default='softmax', help='Transformation applied to place cells in generation')
+parser.add_argument('--truncating', type=int, default=0, help='Truncating steps for BPTT')
 options = parser.parse_args()
 
 if options.mode == 'train':

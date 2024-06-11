@@ -20,6 +20,7 @@ class Trainer(object):
         self.lr = self.options.learning_rate
         self.n_epochs = self.options.n_epochs
         self.n_steps = self.options.n_steps
+        self.truncating = self.options.truncating
 
         self.optimizer = torch.optim.Adam(
             self.model.parameters(), 
@@ -58,14 +59,34 @@ class Trainer(object):
         inputs = (inputs[0].to(self.options.device), inputs[1].to(self.options.device))
         pc_outputs = pc_outputs.to(self.options.device)
         pos = pos.to(self.options.device)
-        self.model.zero_grad()
 
-        loss, err = self.model.compute_loss(inputs, pc_outputs, pos)
+        if self.truncating == 0:
+            self.model.zero_grad()
 
-        loss.backward()
-        self.optimizer.step()
+            loss, err = self.model.compute_loss(inputs, pc_outputs, pos)
 
-        return loss.item(), err.item()
+            loss.backward()
+            self.optimizer.step()
+
+            return loss.item(), err.item()
+        else:
+            h = self.model.init_h(inputs[1])
+            loss, err = 0, 0
+            for k in range(self.options.sequence_length):
+                self.optimizer.zero_grad()
+
+                v = inputs[0][:, k:k+1] # bsz, 1, 2
+                g, h = self.model.step_g(v, h)
+                step_loss, step_err = self.model.compute_step_loss(g, pc_outputs[:, k], pos[:, k])
+
+                step_loss.backward()
+                self.optimizer.step()
+                # detach hidden state so we perform truncated BPTT 
+                h = h.detach() 
+                loss += step_loss.item()
+                err += step_err.item()
+
+            return loss / self.options.sequence_length, err / self.options.sequence_length
 
     def train(self, preloaded_data=None, save=True):
         ''' 
