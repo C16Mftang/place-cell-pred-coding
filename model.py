@@ -16,6 +16,7 @@ class RNN(torch.nn.Module):
         self.weight_decay = options.weight_decay
         self.place_cells = place_cells
         self.loss = options.loss
+        self.truncating = options.truncating
 
         # Input weights
         self.encoder = torch.nn.Linear(self.Np, self.Ng, bias=False)
@@ -43,43 +44,25 @@ class RNN(torch.nn.Module):
         Returns: 
             g: Batch of grid cell activations with shape [batch_size, sequence_length, Ng].
         '''
-        v, p0 = inputs
-        init_state = self.encoder(p0)[None]
-        g,_ = self.RNN(v, init_state)
-        return g
+        if self.truncating == 0:
+            v, p0 = inputs
+            init_state = self.encoder(p0)[None]
+            g,_ = self.RNN(v, init_state)
+            return g
 
-    def init_h(self, p0):
-        return self.encoder(p0)[None]
+        else:
+            total_g = []
+            vs, p0 = inputs
+            seq_len = vs.size(1)
+            h = self.encoder(p0)[None]
+            for k in range(seq_len):
+                v = vs[:, k:k+1] # bsz, 1, 2
+                g, h = self.RNN(vs, h) # g: bsz, 1, Ng
+                # h = h.detach()
+                total_g.append(g)    
+            total_g = torch.cat(total_g, dim=1)            
+            return total_g # bsz, seq_len, Ng
 
-    def step_g(self, v, h):
-        '''
-        Perform truncated forward pass i.e. detach h after several steps.
-        Args:
-            v: Batch of 2d velocity inputs at this step with shape [batch_size, 1, 2].
-
-        Returns: 
-            g_total: Batch of grid cell activations with shape [batch_size, sequence_length, Ng].
-        '''
-        g, h = self.RNN(v, h)
-
-        return g, h
-
-    def compute_step_loss(self, g, pc_output, pos):
-        place_pred = self.out_activation(self.decoder(g))
-        if self.loss == 'CE':
-            loss = -(pc_output * torch.log(place_pred + 1e-9)).sum(-1).mean()
-        elif self.loss == 'MSE':
-            loss = torch.sum((place_pred - pc_output) ** 2, -1).mean()
-
-        loss += self.weight_decay * (self.RNN.weight_hh_l0**2).sum()
-
-        # Compute decoding error
-        place_pred = F.softmax(place_pred, dim=-1)
-        pred_pos = self.place_cells.get_nearest_cell_pos(place_pred)
-        err = torch.sqrt(((pos - pred_pos)**2).sum(-1)).mean()
-
-        return loss, err
-    
     def predict(self, inputs):
         '''
         Predict place cell code.

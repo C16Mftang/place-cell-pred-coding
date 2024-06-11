@@ -60,33 +60,32 @@ class Trainer(object):
         pc_outputs = pc_outputs.to(self.options.device)
         pos = pos.to(self.options.device)
 
-        if self.truncating == 0:
-            self.model.zero_grad()
+        self.model.zero_grad()
 
-            loss, err = self.model.compute_loss(inputs, pc_outputs, pos)
+        loss, err = self.model.compute_loss(inputs, pc_outputs, pos)
 
-            loss.backward()
-            self.optimizer.step()
+        loss.backward()
+        self.optimizer.step()
 
-            return loss.item(), err.item()
-        else:
-            h = self.model.init_h(inputs[1])
-            loss, err = 0, 0
-            for k in range(self.options.sequence_length):
-                self.optimizer.zero_grad()
+        return loss.item(), err.item()
+        # else:
+        #     h = self.model.init_h(inputs[1])
+        #     loss, err = 0, 0
+        #     self.optimizer.zero_grad()
+        #     for k in range(self.options.sequence_length):
+        #         v = inputs[0][:, k:k+1] # bsz, 1, 2
+        #         g, h = self.model.step_g(v, h)
+        #         step_loss, step_err = self.model.compute_step_loss(g, pc_outputs[:, k], pos[:, k])
 
-                v = inputs[0][:, k:k+1] # bsz, 1, 2
-                g, h = self.model.step_g(v, h)
-                step_loss, step_err = self.model.compute_step_loss(g, pc_outputs[:, k], pos[:, k])
+        #         # step_loss.backward()
+        #         # detach hidden state so we perform truncated BPTT 
+        #         # h = h.detach() 
+        #         loss += step_loss / self.options.sequence_length
+        #         err += step_err / self.options.sequence_length
+        #     loss.backward()
+        #     self.optimizer.step()
 
-                step_loss.backward()
-                self.optimizer.step()
-                # detach hidden state so we perform truncated BPTT 
-                h = h.detach() 
-                loss += step_loss.item()
-                err += step_err.item()
-
-            return loss / self.options.sequence_length, err / self.options.sequence_length
+        #     return loss.item(), err.item() 
 
     def train(self, preloaded_data=None, save=True):
         ''' 
