@@ -57,8 +57,8 @@ class RNN(torch.nn.Module):
             h = self.encoder(p0)[None]
             for k in range(seq_len):
                 v = vs[:, k:k+1] # bsz, 1, 2
-                g, h = self.RNN(vs, h) # g: bsz, 1, Ng
-                # h = h.detach()
+                g, h = self.RNN(v, h) # g: bsz, 1, Ng
+                h = h.detach()
                 total_g.append(g)    
             total_g = torch.cat(total_g, dim=1)            
             return total_g # bsz, seq_len, Ng

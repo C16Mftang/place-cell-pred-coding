@@ -67,25 +67,7 @@ class Trainer(object):
         loss.backward()
         self.optimizer.step()
 
-        return loss.item(), err.item()
-        # else:
-        #     h = self.model.init_h(inputs[1])
-        #     loss, err = 0, 0
-        #     self.optimizer.zero_grad()
-        #     for k in range(self.options.sequence_length):
-        #         v = inputs[0][:, k:k+1] # bsz, 1, 2
-        #         g, h = self.model.step_g(v, h)
-        #         step_loss, step_err = self.model.compute_step_loss(g, pc_outputs[:, k], pos[:, k])
-
-        #         # step_loss.backward()
-        #         # detach hidden state so we perform truncated BPTT 
-        #         # h = h.detach() 
-        #         loss += step_loss / self.options.sequence_length
-        #         err += step_err / self.options.sequence_length
-        #     loss.backward()
-        #     self.optimizer.step()
-
-        #     return loss.item(), err.item() 
+        return loss.item(), err.item() 
 
     def train(self, preloaded_data=None, save=True):
         ''' 
