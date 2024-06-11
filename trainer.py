@@ -122,11 +122,14 @@ class Trainer(object):
                         np.round(100 * err, 2),
                     )
                 )
+
+            grad_norm = torch.norm(self.model.RNN.weight_hh_l0.grad, p='fro').item()
             
             if self.options.is_wandb:
                 wandb.log({
                     'loss': epoch_loss / self.n_steps,
                     'err': epoch_err / self.n_steps,
+                    'grad_norm': grad_norm,
                 })
             self.loss.append(epoch_loss / self.n_steps)
             self.err.append(epoch_err / self.n_steps)
@@ -313,11 +316,14 @@ class PCTrainer(object):
                     )
                 )
 
+            grad_norm = torch.norm(self.model.Wr.weight.grad, p='fro').item()
+
             if self.options.is_wandb:
                 wandb.log({
                     'loss': epoch_loss / self.n_steps,
                     'err': epoch_err / self.n_steps,
                     'energy': epoch_energy / self.n_steps,
+                    'grad_norm': grad_norm,
                 })
             self.loss.append(epoch_loss / self.n_steps)
             self.err.append(epoch_err / self.n_steps)
