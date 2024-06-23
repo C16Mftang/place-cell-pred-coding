@@ -414,7 +414,7 @@ def plot_place_cells(place_cell, options, res, n_show=5):
     fig, axes = plt.subplots(1, n_show, figsize=(n_show*2, 2))
     for i in range(n_show):
         # notice the interpolation arg, which visually makes these 'real' place fields
-        im = axes[i].imshow(grid_pc[:,:,select[i]].cpu().numpy())
+        im = axes[i].imshow(grid_pc[:,:,select[i]].cpu().numpy(), cmap='jet', interpolation='bilinear')
         axes[i].set_title('Place cell {}'.format(select[i]))
         axes[i].set_xticks([])
         axes[i].set_yticks([])
