@@ -9,3 +9,5 @@ predictive_coding/__pycache__/*
 /output/*
 /wandb/*
 *.txt
+/figures/*
+*.ps1
