@@ -447,7 +447,7 @@ class MultilayertPC(nn.Module):
         return energy
 
 class MultilayerPCN(nn.Module):
-    def __init__(self, nodes, nonlin, lamb=0., use_bias=False):
+    def __init__(self, nodes, nonlin, lamb=0., use_bias=False, relu_inf=True):
         super().__init__()
         self.n_layers = len(nodes)
         self.layers = nn.Sequential()
@@ -460,6 +460,7 @@ class MultilayerPCN(nn.Module):
 
         self.mem_dim = nodes[0]
         self.memory = nn.Parameter(torch.zeros((nodes[0],)))
+        self.relu_inf = relu_inf
 
         if nonlin == 'tanh':
             nonlin = utils.Tanh()
@@ -498,7 +499,7 @@ class MultilayerPCN(nn.Module):
             # sparse penalty
             penalty = self.lamb if l == 0 else 0.
             delta = -self.errs[l] - penalty * torch.sign(self.val_nodes[l]) + derivative * torch.matmul(self.errs[l+1], self.layers[l].weight)
-            self.val_nodes[l] = F.relu(self.val_nodes[l] + inf_lr * delta)
+            self.val_nodes[l] = F.relu(self.val_nodes[l] + inf_lr * delta) if self.relu_inf else self.val_nodes[l] + inf_lr * delta
 
     def set_nodes(self, batch_inp):
         # computing val nodes
