@@ -67,8 +67,8 @@ parser.add_argument('--Np', type=int, default=512, help='Number of place cells')
 parser.add_argument('--Ng', type=int, default=256, help='Number of grid cells')
 parser.add_argument('--place_cell_rf', type=float, default=0.12, help='Width of place cell center tuning curve (m)')
 parser.add_argument('--surround_scale', type=int, default=2, help='If DoG, ratio of sigma2^2 to sigma1^2')
-parser.add_argument('--DoG', type=bool, default=True, help='Use difference of gaussians tuning curves')
-parser.add_argument('--periodic', type=bool, default=True, help='Trajectories with periodic boundary conditions')
+parser.add_argument('--DoG', type=lambda x: (str(x).lower() == 'true'), default=True, help='Use difference of gaussians tuning curves')
+parser.add_argument('--periodic', type=lambda x: (str(x).lower() == 'true'), default=False, help='Trajectories with periodic boundary conditions')
 parser.add_argument('--box_width', type=float, default=1.4, help='Width of training environment')
 parser.add_argument('--box_height', type=float, default=1.4, help='Height of training environment')
 parser.add_argument('--out_activation', type=str, default='linear', help='Nonlinearity function')
@@ -85,9 +85,11 @@ parser.add_argument('--weight_decay', type=float, default=1e-5, help='Weight dec
 parser.add_argument('--loss', type=str, default='MSE', help='Loss function')
 parser.add_argument('--lambda_z_init', type=float, default=0.1, help='Lambda for hidden layer')
 parser.add_argument('--normalize_pc', type=str, default='softmax', help='transformation applied to place cells in generation')
+parser.add_argument('--relu_inf', type=lambda x: (str(x).lower() == 'true'), default=True, help='Use ReLU for inference')
 
 options = parser.parse_args()
 
+options.save_dir = os.path.join(options.save_dir, f'sparse_{(options.lambda_z_init != 0)}_relu_{options.relu_inf}')
 if not os.path.exists(options.save_dir):
     os.makedirs(options.save_dir)
 
@@ -112,7 +114,7 @@ pc_outputs = pc_outputs - pc_outputs.mean(dim=0, keepdim=True)
 
 # Train the PCN
 nodes = [options.Ng, options.Np]
-pcn = MultilayerPCN(nodes, options.out_activation, lamb=options.lambda_z_init, use_bias=False).to(device)
+pcn = MultilayerPCN(nodes, options.out_activation, lamb=options.lambda_z_init, use_bias=False, relu_inf=options.relu_inf).to(device)
 X = torch.tensor(pc_outputs).to(device)
 optimizer = torch.optim.Adam(pcn.parameters(), 
     lr=options.learning_lr, 
@@ -154,7 +156,7 @@ plt.plot(train_mses)
 plt.xlabel('Epoch')
 plt.ylabel('Energy')
 plt.title('Training Loss')
-plt.savefig(options.save_dir + 'training_loss.png')
+plt.savefig(os.path.join(options.save_dir, 'training_loss.png'))
 plt.close()
 
 # save model
@@ -163,11 +165,11 @@ plt.close()
 pcn.set_sparsity(0.)
 pcn.inference(X, options.inference_iters, options.inference_lr_test)
 gcs = pcn.val_nodes[0].clone().detach().cpu().numpy().T # [Ng, res**2]
-visualize_grid_cells(gcs, options.learning_iters, options)
+# visualize_grid_cells(gcs, options.learning_iters, options)
 gcs = gcs.reshape((-1, options.res, options.res))
 idx, scores = compute_grid_scores(options.res, gcs, options)
 sorted_gcs = gcs[idx]
 plot_all_ratemaps(sorted_gcs, scores, options)
-np.savez(options.save_dir + 'gc_and_scores.npz', gcs=sorted_gcs, scores=scores)
+np.savez(os.path.join(options.save_dir, 'gc_and_scores.npz'), gcs=sorted_gcs, scores=scores)
 
 
