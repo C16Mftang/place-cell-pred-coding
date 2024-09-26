@@ -11,3 +11,4 @@ predictive_coding/__pycache__/*
 *.txt
 /figures/*
 *.ps1
+predictive_coding/
