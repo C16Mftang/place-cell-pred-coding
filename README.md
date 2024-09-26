@@ -1,3 +1,3 @@
-Repository for explorations into predictive coding for spatial representations in hippocampus and related areas.
+Repository for 'Learning grid cells by predictive coding'
 
-Mufeng Tang
+Run `place_cell_tpc.py` to get results for grid cell activities in tpc. It will create a folder under `results/tpc`, where the latent neurons with grid cell-like firing fields are saved.
