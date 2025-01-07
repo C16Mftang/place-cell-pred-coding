@@ -3,7 +3,6 @@ import torch
 import numpy as np
 import torch.nn.functional as F
 
-from visualize import save_ratemaps
 import os
 from tqdm import tqdm
 

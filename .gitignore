@@ -1,9 +1,7 @@
-*.ipynb
 /data/*
 /images/*
 /models/*
-/__pycache__/*
-predictive_coding/__pycache__/*
+**/__pycache__/*
 /results/*
 *.sh
 /output/*
@@ -12,3 +10,5 @@ predictive_coding/__pycache__/*
 /figures/*
 *.ps1
 predictive_coding/
+/legacy
+test.py
