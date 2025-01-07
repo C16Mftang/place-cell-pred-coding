@@ -6,12 +6,12 @@ import scipy
 import scipy.stats
 from imageio import imsave
 import cv2
-import utils
+import src.utils
 import torch
 import os
-import model as m
+import src.model as m
 from tqdm import tqdm
-from scores import GridScorer, border_score
+from .evaluation.scores import GridScorer, border_score
 
 
 def concat_images(images, image_width, spacer_size):

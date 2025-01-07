@@ -3,8 +3,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
-import utils as utils
-import predictive_coding as pc
+import src.utils as utils
 
 
 class RNN(torch.nn.Module):

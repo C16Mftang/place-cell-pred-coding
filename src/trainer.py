@@ -6,8 +6,8 @@ import torch.nn.functional as F
 import os
 from tqdm import tqdm
 
-from get_data import *
-import utils
+from src.data.preload_data import *
+import src.utils
 import wandb
 
 class Trainer(object):

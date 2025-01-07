@@ -7,12 +7,12 @@ import matplotlib.pyplot as plt
 import argparse
 import json
 
-from place_cells import PlaceCells
-from trajectory_generator import TrajectoryGenerator
-from model import HierarchicalPCN, TemporalPCN
-from trainer import PCTrainer
-from visualize import *
-import utils
+from src.data.place_cells import PlaceCells
+from src.data.trajectory_generator import TrajectoryGenerator
+from src.model import HierarchicalPCN, TemporalPCN
+from src.trainer import PCTrainer
+from src.visualize import *
+import src.utils as utils
 
 parser = argparse.ArgumentParser(fromfile_prefix_chars="@")
 parser.add_argument("--device", type=str, default="cuda", help="Device to use")
