@@ -4,7 +4,6 @@ import matplotlib.pyplot as plt
 import os
 import time
 import json
-import predictive_coding as pc
 import torch.optim as optim
 import torch.nn.functional as F
 
