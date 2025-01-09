@@ -13,9 +13,11 @@ from src.model import HierarchicalPCN, TemporalPCN
 from src.trainer import PCTrainer
 from src.visualize import *
 import src.utils as utils
+from src.constants import PERIODIC, DEVICE
+print('constant imported')
 
 parser = argparse.ArgumentParser(fromfile_prefix_chars="@")
-parser.add_argument("--device", type=str, default="cuda", help="Device to use")
+# parser.add_argument("--device", type=str, default="cuda", help="Device to use")
 parser.add_argument(
     "--oned",
     type=lambda x: (str(x).lower() == "true"),
@@ -46,12 +48,12 @@ parser.add_argument(
     default=2,
     help="Scale factor for the surround inhibition",
 )
-parser.add_argument(
-    "--periodic",
-    type=lambda x: (str(x).lower() == "true"),
-    default=False,
-    help="Use periodic boundary conditions",
-)
+# parser.add_argument(
+#     "--periodic",
+#     type=lambda x: (str(x).lower() == "true"),
+#     default=False,
+#     help="Use periodic boundary conditions",
+# )
 parser.add_argument(
     "--sequence_length", type=int, default=10, help="Length of the trajectory sequence"
 )
@@ -160,6 +162,8 @@ parser.add_argument(
     help="Without velocity input",
 )
 options = parser.parse_args()
+options.periodic = PERIODIC
+options.device = DEVICE
 
 if options.mode == "train":
     # save directory
@@ -168,11 +172,10 @@ if options.mode == "train":
         now = options.restore
     options.save_dir = os.path.join("./results/tpc", now)
 
-    if not os.path.exists(options.save_dir):
+    if options.save and not os.path.exists(options.save_dir):
         os.makedirs(options.save_dir)
-    print("Saving to:", options.save_dir)
-
-    utils.save_options_to_json(options, os.path.join(options.save_dir, "configs.json"))
+        print("Saving to:", options.save_dir)
+        utils.save_options_to_json(options, os.path.join(options.save_dir, "configs.json"))
 
     # define place cells, trajectory generator, model, and trainer
     place_cell = PlaceCells(options)

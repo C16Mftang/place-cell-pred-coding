@@ -1,0 +1,4 @@
+PERIODIC = False
+DEVICE = "cuda"
+ONED = False
+WEIGHT_DECAY = 1e-4

@@ -297,7 +297,7 @@ class PCTrainer(object):
 
                 # this softmax intends to find the highest activities among neurons,
                 # whcih is different from a nonlinearity
-                if not isinstance(self.options.out_activation, utils.Softmax):
+                if not isinstance(self.options.out_activation, src.utils.Softmax):
                     pred_xs = F.softmax(pred_xs, dim=-1)
 
                 pred_pos = self.place_cells.get_nearest_cell_pos(pred_xs)
