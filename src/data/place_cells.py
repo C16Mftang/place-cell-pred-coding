@@ -106,15 +106,9 @@ class PlaceCells(object):
         # Convert to numpy
         pc_outputs = pc_outputs.reshape(-1, self.Np)
 
-        T = pc_outputs.shape[0]  # T vs transpose? What is T? (dim's?)
+        T = pc_outputs.shape[0] 
         pc = np.zeros([T, res, res])
         for i in range(len(pc_outputs)):
-            # us: place cell centers, shape [Np, 2]
-            # pc_outputs: place cell outputs, shape [T, Np]
-            # grid: grid points, shape [res**2, 2]
-            # grid data basically rewrites the pc_outputs onto the grid
-            # but what if pc_outputs are not exatcly on the grid?
-            #
             gridval = scipy.interpolate.griddata(
                 self.centers.cpu(), pc_outputs[i], grid
             )
