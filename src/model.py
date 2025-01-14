@@ -4,7 +4,7 @@ import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
 import src.utils as utils
-
+from src.constants import ACTIVATION_FUNCS
 
 class RNN(torch.nn.Module):
     def __init__(self, options, place_cells):
@@ -116,12 +116,8 @@ class HierarchicalPCN(nn.Module):
 
         # sparse penalty
         self.sparse_z = options.lambda_z_init
-        if options.out_activation == "softmax":
-            self.out_activation = utils.Softmax()
-        elif options.out_activation == "tanh":
-            self.out_activation = utils.Tanh()
-        elif options.out_activation == "sigmoid":
-            self.out_activation = utils.Sigmoid()
+
+        self.out_activation = ACTIVATION_FUNCS[options.out_activation]
         self.loss = options.loss
 
     def set_sparsity(self, sparsity):
@@ -202,20 +198,9 @@ class TemporalPCN(nn.Module):
 
         self.sparse_z = options.lambda_z
         self.weight_decay = options.weight_decay
-        if options.out_activation == "softmax":
-            self.out_activation = utils.Softmax()
-        elif options.out_activation == "tanh":
-            self.out_activation = utils.Tanh()
-        elif options.out_activation == "sigmoid":
-            self.out_activation = utils.Sigmoid()
 
-        if options.rec_activation == "tanh":
-            self.rec_activation = utils.Tanh()
-        elif options.rec_activation == "relu":
-            self.rec_activation = utils.ReLU()
-        elif options.rec_activation == "sigmoid":
-            self.rec_activation = utils.Sigmoid()
-
+        self.out_activation = ACTIVATION_FUNCS[options.out_activation]
+        self.rec_activation = ACTIVATION_FUNCS[options.rec_activation]
         self.loss = options.loss
 
     def set_nodes(self, v, prev_z, p):
@@ -290,7 +275,7 @@ class TemporalPCN(nn.Module):
 
         return energy, obs_loss
 
-
+# TODO: replace multilayerPCN with HierarchicalPCN in pc_pcn.py
 class MultilayerPCN(nn.Module):
     def __init__(self, nodes, nonlin, lamb=0.0, use_bias=False, relu_inf=True):
         super().__init__()

@@ -13,17 +13,9 @@ from src.model import HierarchicalPCN, TemporalPCN
 from src.trainer import PCTrainer
 from src.visualize import *
 import src.utils as utils
-from src.constants import PERIODIC, DEVICE
-print('constant imported')
+from src.constants import *
 
 parser = argparse.ArgumentParser(fromfile_prefix_chars="@")
-# parser.add_argument("--device", type=str, default="cuda", help="Device to use")
-parser.add_argument(
-    "--oned",
-    type=lambda x: (str(x).lower() == "true"),
-    default=False,
-    help="Use one-dimensional place cells",
-)
 parser.add_argument("--Np", type=int, default=512, help="Number of place cells")
 parser.add_argument("--Ng", type=int, default=2048, help="Number of grid cells")
 parser.add_argument("--Nv", type=int, default=2, help="Number of velocity inputs")
@@ -48,12 +40,6 @@ parser.add_argument(
     default=2,
     help="Scale factor for the surround inhibition",
 )
-# parser.add_argument(
-#     "--periodic",
-#     type=lambda x: (str(x).lower() == "true"),
-#     default=False,
-#     help="Use periodic boundary conditions",
-# )
 parser.add_argument(
     "--sequence_length", type=int, default=10, help="Length of the trajectory sequence"
 )
@@ -69,24 +55,6 @@ parser.add_argument(
 )
 parser.add_argument(
     "--learning_rate", type=float, default=1e-4, help="Learning rate for optimization"
-)
-parser.add_argument(
-    "--weight_decay", type=float, default=1e-4, help="Weight decay for optimization"
-)
-parser.add_argument(
-    "--decay_step_size", type=int, default=10, help="Step size for learning rate decay"
-)
-parser.add_argument(
-    "--decay_rate", type=float, default=0.9, help="Decay rate for learning rate decay"
-)
-parser.add_argument(
-    "--lambda_z", type=float, default=0, help="Weight for the regularization term"
-)
-parser.add_argument(
-    "--lambda_z_init",
-    type=float,
-    default=0,
-    help="Initial weight for the regularization term",
 )
 parser.add_argument(
     "--inf_iters", type=int, default=20, help="Number of inference iterations"
@@ -127,9 +95,6 @@ parser.add_argument(
     default=True,
     help="Save the trained model",
 )
-parser.add_argument(
-    "--save_every", type=int, default=50, help="Save the model every n epochs"
-)
 parser.add_argument("--loss", type=str, default="CE", help="Loss function for training")
 parser.add_argument(
     "--normalize_pc",
@@ -164,6 +129,15 @@ parser.add_argument(
 options = parser.parse_args()
 options.periodic = PERIODIC
 options.device = DEVICE
+options.oned = ONED
+options.weight_decay = WEIGHT_DECAY
+options.decay_step_size = DECAY_STEP_SIZE
+options.decay_rate = DECAY_RATE
+options.lambda_z = LAMBDA_Z
+options.lambda_z_init = LAMBDA_Z_INIT
+options.save_every = SAVE_EVERY
+options.place_cell_rf = PLACE_CELL_RF
+options.surround_scale = SURROUND_SCALE
 
 if options.mode == "train":
     # save directory
@@ -185,7 +159,6 @@ if options.mode == "train":
     trainer = PCTrainer(
         options, model, init_model, generator, place_cell, restore=options.restore
     )
-
     trainer.train(preloaded_data=options.preloaded_data, save=options.save)
     plot_place_cells(place_cell, options, res=30)
     plot_2d_performance(place_cell, generator, options, trainer)
