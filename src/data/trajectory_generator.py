@@ -6,9 +6,10 @@ import numpy as np
 
 class TrajectoryGenerator(object):
 
-    def __init__(self, options, place_cells):
+    def __init__(self, options, place_cells, environment='rectangle'):
         self.options = options
         self.place_cells = place_cells
+        self.environment = environment
 
     def get_hidden_projector(self):
         g_r = torch.Generator()
@@ -19,18 +20,37 @@ class TrajectoryGenerator(object):
 
     def avoid_wall(self, position, hd, box_width, box_height):
         """
-        Compute distance and angle to nearest wall
+        Compute distance and angle to nearest wall in a specified environment
         """
         x = position[:, 0]
         y = position[:, 1]
-        dists = [
-            box_width / 2 - x,
-            box_height / 2 - y,
-            box_width / 2 + x,
-            box_height / 2 + y,
-        ]
+
+        if self.environment == 'rectangle':
+            # Rectangular environment
+            dists = [
+                box_width / 2 - x,
+                box_height / 2 - y,
+                box_width / 2 + x,
+                box_height / 2 + y,
+            ]
+        elif self.environment == 'trapezoid':
+            # Trapezoid environment
+            dists = [
+                5 * box_width / 16 - x - 3 * y * box_width / (8 * box_height),  # Right edge
+                box_height / 2 - y,  # Top edge
+                5 * box_width / 16 + x - 3 * y * box_width / (8 * box_height),  # Left edge
+                box_height / 2 + y  # Bottom edge
+            ]
+        else:
+            raise ValueError(
+                "Unsupported environment type. Choose 'rectangle' or 'trapezoid'."
+            )
+
         d_wall = np.min(dists, axis=0)
-        angles = np.arange(4) * np.pi / 2
+        if self.environment == 'rectangle':
+            angles = np.array([0, np.pi / 2, np.pi, 3 * np.pi / 2])
+        elif self.environment == 'trapezoid':
+            angles = np.array([0, np.pi / 2, np.pi, 3 * np.pi / 2])  # Adjust as needed for trapezoid
         theta = angles[np.argmin(dists, axis=0)]
         hd = np.mod(hd, 2 * np.pi)
         a_wall = hd - theta
@@ -60,6 +80,26 @@ class TrajectoryGenerator(object):
         position[:, 0, 1] = np.random.uniform(
             -box_height / 2, box_height / 2, batch_size
         )
+        if self.environment == 'trapezoid':
+            init_x = position[:, 0, 0]
+            init_y = position[:, 0, 1]
+            # Check if initial position is within trapezoid
+            while True:
+                out_of_bounds = np.logical_or(
+                    -8 * box_height * init_x / (3 * box_width) + 5 * box_height / 6 < init_y,
+                    8 * box_height * init_x / (3 * box_width) + 5 * box_height / 6 < init_y,
+                )
+                if not np.any(out_of_bounds):
+                    break
+                position[out_of_bounds, 0, 0] = np.random.uniform(
+                    -box_width / 2, box_width / 2, np.sum(out_of_bounds)
+                )
+                position[out_of_bounds, 0, 1] = np.random.uniform(
+                    -box_height / 2, box_height / 2, np.sum(out_of_bounds)
+                )
+                init_x = position[:, 0, 0]
+                init_y = position[:, 0, 1]
+
         head_dir[:, 0] = np.random.uniform(0, 2 * np.pi, batch_size)
         velocity = np.zeros([batch_size, samples + 2])
 
@@ -94,7 +134,7 @@ class TrajectoryGenerator(object):
             head_dir[:, t + 1] = head_dir[:, t] + turn_angle
 
         # Periodic boundaries
-        if self.options.periodic:
+        if self.options.periodic and self.environment == 'rectangle':
             position[:, :, 0] = (
                 np.mod(position[:, :, 0] + box_width / 2, box_width) - box_width / 2
             )

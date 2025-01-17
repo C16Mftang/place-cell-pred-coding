@@ -14,3 +14,5 @@ predictive_coding/
 test.py
 place_cell_tpc_sweep.py
 place_cell_tpc_1d.py
+.vscode
+*.egg-info
