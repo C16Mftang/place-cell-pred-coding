@@ -32,15 +32,6 @@ parser.add_argument(
     "--box_height", type=float, default=1.4, help="Height of the environment box"
 )
 parser.add_argument(
-    "--place_cell_rf", type=float, default=0.12, help="Place cell receptive field size"
-)
-parser.add_argument(
-    "--surround_scale",
-    type=int,
-    default=2,
-    help="Scale factor for the surround inhibition",
-)
-parser.add_argument(
     "--sequence_length", type=int, default=10, help="Length of the trajectory sequence"
 )
 parser.add_argument("--dt", type=float, default=0.02, help="Time step size")
@@ -126,6 +117,12 @@ parser.add_argument(
     default=False,
     help="Without velocity input",
 )
+parser.add_argument(
+    "--env_shape",
+    type=str,
+    default='rectangle',
+    help="Shape of the simulated environment."
+)
 options = parser.parse_args()
 options.periodic = PERIODIC
 options.device = DEVICE
@@ -153,7 +150,7 @@ if options.mode == "train":
 
     # define place cells, trajectory generator, model, and trainer
     place_cell = PlaceCells(options)
-    generator = TrajectoryGenerator(options, place_cell)
+    generator = TrajectoryGenerator(options, place_cell, environment=options.env_shape)
     model = TemporalPCN(options).to(options.device)
     init_model = HierarchicalPCN(options).to(options.device)
     trainer = PCTrainer(
@@ -195,7 +192,7 @@ else:
     plot_weights(Wr, options)
 
     place_cell = PlaceCells(options)
-    generator = TrajectoryGenerator(options, place_cell)
+    generator = TrajectoryGenerator(options, place_cell, environment=options.env_shape)
     trainer = PCTrainer(
         options, model, init_model, generator, place_cell, restore=False
     )
