@@ -106,8 +106,11 @@ def compute_ratemaps(
     g = np.zeros([n_avg, options.batch_size * options.sequence_length, Ng])
     pos = np.zeros([n_avg, options.batch_size * options.sequence_length, 2])
 
-    activations = np.zeros([Ng, res, res])
-    counts = np.zeros([res, res])
+    scaler = options.box_height / options.box_width
+    res_h = int(res * scaler)
+    res_w = int(res)
+    activations = np.zeros([Ng, res_w, res_h])
+    counts = np.zeros([res_w, res_h])
 
     for index in tqdm(range(n_avg)):
         # pos_batch: [batch_size, sequence_length, 2]
@@ -131,21 +134,21 @@ def compute_ratemaps(
         # Convert position to indices
         # add h/2 or w/2 is to transform the top-left corner to the center of the box
         # divide by h or w is to normalize the position to [0, 1] to fit the resolution
-        x_batch = (pos_batch[:, 0] + options.box_width / 2) / (options.box_width) * res
+        x_batch = (pos_batch[:, 0] + options.box_width / 2) / (options.box_width) * res_w
         y_batch = (
-            (pos_batch[:, 1] + options.box_height / 2) / (options.box_height) * res
+            (pos_batch[:, 1] + options.box_height / 2) / (options.box_height) * res_h
         )
 
         for i in range(options.batch_size * options.sequence_length):
             x = x_batch[i]
             y = y_batch[i]
-            if x >= 0 and x < res and y >= 0 and y < res:
+            if x >= 0 and x < res_w and y >= 0 and y < res_h:
                 counts[int(x), int(y)] += 1
                 activations[:, int(x), int(y)] += g_batch[i, :]
 
     # make it a density map
-    for x in range(res):
-        for y in range(res):
+    for x in range(res_w):
+        for y in range(res_h):
             if counts[x, y] > 0:
                 activations[:, x, y] /= counts[x, y]
 
