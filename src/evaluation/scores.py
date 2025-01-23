@@ -27,25 +27,33 @@ import scipy.signal
 import scipy.ndimage as ndimage
 
 
-def circle_mask(size, radius, in_val=1.0, out_val=0.0):
-    """Calculating the grid scores with different radius."""
-    sz = [math.floor(size[0] / 2), math.floor(size[1] / 2)]
-    x = np.linspace(-sz[0], sz[1], size[1])
-    x = np.expand_dims(x, 0)
-    x = x.repeat(size[0], 0)
-    y = np.linspace(-sz[0], sz[1], size[1])
-    y = np.expand_dims(y, 1)
-    y = y.repeat(size[1], 1)
-    z = np.sqrt(x**2 + y**2)
-    z = np.less_equal(z, radius)
-    vfunc = np.vectorize(lambda b: b and in_val or out_val)
-    return vfunc(z)
+# def circle_mask(size, radius, in_val=1.0, out_val=0.0):
+#     """Calculating the grid scores with different radius."""
+#     sz = [math.floor(size[0] / 2), math.floor(size[1] / 2)]
+#     x = np.linspace(-sz[0], sz[1], size[1])
+#     x = np.expand_dims(x, 0)
+#     x = x.repeat(size[0], 0)
+#     y = np.linspace(-sz[0], sz[1], size[1])
+#     y = np.expand_dims(y, 1)
+#     y = y.repeat(size[1], 1)
+#     z = np.sqrt(x**2 + y**2)
+#     z = np.less_equal(z, radius)
+#     vfunc = np.vectorize(lambda b: b and in_val or out_val)
+#     return vfunc(z)
+
+def circle_mask(shape, radius):
+    """Generates a circular mask with the given radius."""
+    y, x = np.ogrid[:shape[0], :shape[1]]
+    center_y, center_x = shape[0] // 2, shape[1] // 2
+    distance = np.sqrt((x - center_x)**2 + (y - center_y)**2)
+    mask = distance <= radius
+    return mask.astype(float)
 
 
 class GridScorer(object):
     """Class for scoring ratemaps given trajectories."""
 
-    def __init__(self, nbins, coords_range, mask_parameters, min_max=False):
+    def __init__(self, nbins_w, nbins_h, coords_range, mask_parameters, min_max=False):
         """Scoring ratemaps given trajectories.
         Args:
           nbins: Number of bins per dimension in the ratemap.
@@ -54,7 +62,9 @@ class GridScorer(object):
             autocorrelation of the 2D autocorrelation.
           min_max: Correction.
         """
-        self._nbins = nbins
+        self._nbins_w = nbins_w
+        self._nbins_h = nbins_h
+        self._nbins = nbins_w
         self._min_max = min_max
         self._coords_range = coords_range
         self._corr_angles = [30, 45, 60, 90, 120, 135, 150]
@@ -65,10 +75,10 @@ class GridScorer(object):
         ]
         # Mask for hiding the parts of the SAC that are never used
         self._plotting_sac_mask = circle_mask(
-            [self._nbins * 2 - 1, self._nbins * 2 - 1],
+            [self._nbins_w * 2 - 1, self._nbins_h * 2 - 1],
             self._nbins,
-            in_val=1.0,
-            out_val=np.nan,
+            # in_val=1.0,
+            # out_val=np.nan,
         )
 
     def calculate_ratemap(self, xs, ys, activations, statistic="mean"):
@@ -82,7 +92,7 @@ class GridScorer(object):
         )[0]
 
     def _get_ring_mask(self, mask_min, mask_max):
-        n_points = [self._nbins * 2 - 1, self._nbins * 2 - 1]
+        n_points = [self._nbins_w * 2 - 1, self._nbins_h * 2 - 1]
         return circle_mask(n_points, mask_max * self._nbins) * (
             1 - circle_mask(n_points, mask_min * self._nbins)
         )

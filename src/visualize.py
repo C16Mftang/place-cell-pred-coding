@@ -169,7 +169,10 @@ def compute_grid_scores(lo_res, rate_map_lo_res, options):
     box_height = options.box_height
     coord_range = ((-box_width / 2, box_width / 2), (-box_height / 2, box_height / 2))
     masks_parameters = zip(starts, ends.tolist())
-    scorer = GridScorer(lo_res, coord_range, masks_parameters)
+    scaler = box_height / box_width
+    lo_res_h = int(lo_res * scaler)
+    lo_res_w = lo_res
+    scorer = GridScorer(lo_res_w, lo_res_h, coord_range, masks_parameters)
 
     score_60, score_90, max_60_mask, max_90_mask, sac, max_60_ind = zip(
         *[scorer.get_scores(rm) for rm in tqdm(rate_map_lo_res)]

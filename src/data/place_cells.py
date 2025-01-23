@@ -23,7 +23,7 @@ class PlaceCells(object):
         # never change the seed, it's important for reproducibility
         np.random.seed(0)
         usx = np.random.uniform(-self.box_width / 2, self.box_width / 2, (self.Np,))
-        usy = np.random.uniform(-self.box_width / 2, self.box_width / 2, (self.Np,))
+        usy = np.random.uniform(-self.box_height / 2, self.box_height / 2, (self.Np,))
         self.centers = torch.tensor(np.vstack([usx, usy]).T)
         # If using a GPU, put on GPU
         self.centers = self.centers.to(self.device)
