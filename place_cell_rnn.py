@@ -193,9 +193,9 @@ else:
     # save top 64 grid cells
     np.save(os.path.join(save_dir, "top64_grid_cells.npy"), rate_map[idx[:64]])
 
-    # border score
-    print("Calculating border scores...")
-    idx_border, scores_border = compute_border_scores(lo_res, rate_map_lo_res, options)
-    plot_all_ratemaps(
-        rate_map[idx_border], options, scores_border, dir="all_maps_border"
-    )
+    # # border score
+    # print("Calculating border scores...")
+    # idx_border, scores_border = compute_border_scores(lo_res, rate_map_lo_res, options)
+    # plot_all_ratemaps(
+    #     rate_map[idx_border], options, scores_border, dir="all_maps_border"
+    # )
