@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 from matplotlib import pyplot as plt
+from matplotlib.path import Path
 
 import scipy
 import scipy.stats
@@ -405,21 +406,22 @@ def plot_1d_ratemaps(rate_map, options):
     plt.savefig(os.path.join(options.save_dir, "1d_ratemaps.png"))
 
 
-def plot_2d_ratemaps(rate_map, options, n_col=4):
-    from matplotlib.path import Path
+def plot_2d_ratemaps(rate_map, options, n_col=4, res=30):
     Ng = 64 if options.Ng > 64 else options.Ng
     w = options.box_width
     h = options.box_height
+    res_w = int(res)
+    res_h = int(res * h / w)
     # Define the trapezoid (vertices in (x, y) format)
     trapezoid_vertices = np.array([[-h/2, -w/2], [h/2, -w/8], [h/2, w/8], [-h/2, w/2]])
 
     # Create a mask for the trapezoid
-    x_indices, y_indices = np.meshgrid(np.linspace(-h/2, h/2, 40), np.linspace(-w/2, w/2, 20))  # Pixel coordinates
+    x_indices, y_indices = np.meshgrid(np.linspace(-h/2, h/2, res_h), np.linspace(-w/2, w/2, res_w))  # Pixel coordinates
     points = np.vstack((x_indices.ravel(), y_indices.ravel())).T  # Convert to (N, 2) array
 
     # Check if each pixel is inside the trapezoid
     trapezoid_path = Path(trapezoid_vertices)
-    mask = trapezoid_path.contains_points(points).reshape(20, 40)
+    mask = trapezoid_path.contains_points(points).reshape(res_w, res_h)
 
     fig, ax = plt.subplots(n_col, Ng // n_col, figsize=(Ng // n_col, n_col))
     for i, ax in enumerate(ax.flatten()):
@@ -435,7 +437,7 @@ def plot_2d_ratemaps(rate_map, options, n_col=4):
     plt.savefig(os.path.join(options.save_dir, "2d_ratemaps.png"))
 
 
-def plot_all_ratemaps(rate_map, options, scores=None, dir="all_maps"):
+def plot_all_ratemaps(rate_map, options, res=30, scores=None, dir="all_maps"):
     n_col = 8
     Ng_per_file = 64
     n_files = options.Ng // Ng_per_file
@@ -443,6 +445,21 @@ def plot_all_ratemaps(rate_map, options, scores=None, dir="all_maps"):
     all_dir = os.path.join(options.save_dir, dir)
     if not os.path.exists(all_dir):
         os.makedirs(all_dir)
+
+    w = options.box_width
+    h = options.box_height
+    res_w = int(res)
+    res_h = int(res * h / w)
+    # Define the trapezoid (vertices in (x, y) format)
+    trapezoid_vertices = np.array([[-h/2, -w/2], [h/2, -w/8], [h/2, w/8], [-h/2, w/2]])
+
+    # Create a mask for the trapezoid
+    x_indices, y_indices = np.meshgrid(np.linspace(-h/2, h/2, res_h), np.linspace(-w/2, w/2, res_w))  # Pixel coordinates
+    points = np.vstack((x_indices.ravel(), y_indices.ravel())).T  # Convert to (N, 2) array
+
+    # Check if each pixel is inside the trapezoid
+    trapezoid_path = Path(trapezoid_vertices)
+    mask = trapezoid_path.contains_points(points).reshape(res_w, res_h)
 
     for i in tqdm(range(n_files)):
         rm = rate_map[
@@ -452,8 +469,9 @@ def plot_all_ratemaps(rate_map, options, scores=None, dir="all_maps"):
             Ng_per_file // n_col, n_col, figsize=(n_col, Ng_per_file // n_col)
         )
         for j, ax in enumerate(axes.flatten()):
-            r = (rm[j] - rm[j].min()) / (rm[j].max() - rm[j].min())
-            ax.imshow(r, cmap="jet")
+            r = (rm[j] - rm[j].min()) / (rm[j].max() - rm[j].min() + 1e-8)
+            r[~mask] = np.nan
+            ax.imshow(r, cmap="jet", extent=[-h/2, h/2, -w/2, w/2], origin='lower')
             ax.set_xticks([])
             ax.set_yticks([])
             if scores:

@@ -159,10 +159,11 @@ if options.mode == "train":
     trainer.train(preloaded_data=options.preloaded_data, save=options.save)
     plot_place_cells(place_cell, options, res=30)
     plot_2d_performance(place_cell, generator, options, trainer)
+    res = 30
     rate_map = compute_ratemaps(
-        model, trainer, generator, options, res=20, n_avg=200, Ng=options.Ng
+        model, trainer, generator, options, res=res, n_avg=200, Ng=options.Ng
     )
-    plot_2d_ratemaps(rate_map, options, n_col=4)
+    plot_2d_ratemaps(rate_map, options, n_col=4, res=res)
     plot_loss_err(trainer, options)
 
 else:
@@ -197,8 +198,9 @@ else:
         options, model, init_model, generator, place_cell, restore=False
     )
     print("Generating rate maps...")
+    full_res = 30
     rate_map = compute_ratemaps(
-        model, trainer, generator, options, res=30, n_avg=200, Ng=options.Ng
+        model, trainer, generator, options, res=full_res, n_avg=200, Ng=options.Ng
     )
 
     # calculate grid scores
@@ -213,7 +215,7 @@ else:
         lo_res, rate_map_lo_res, options
     )  # descending order
     # select the top grid cells
-    plot_all_ratemaps(rate_map[idx], options, scores)
+    plot_all_ratemaps(rate_map[idx], options, full_res, scores)
 
     # save scores
     np.save(os.path.join(save_dir, "grid_scores.npy"), scores)
