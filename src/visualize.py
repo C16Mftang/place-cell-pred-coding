@@ -163,7 +163,7 @@ def compute_ratemaps(
     return activations
 
 
-def compute_grid_scores(lo_res, rate_map_lo_res, options):
+def compute_grid_scores(lo_res, rate_map_lo_res, options, half=False):
     starts = [0.2] * 10
     ends = np.linspace(0.4, 1.0, num=10)
     box_width = options.box_width
@@ -171,6 +171,8 @@ def compute_grid_scores(lo_res, rate_map_lo_res, options):
     coord_range = ((-box_width / 2, box_width / 2), (-box_height / 2, box_height / 2))
     masks_parameters = zip(starts, ends.tolist())
     scaler = box_height / box_width
+    if half:
+        scaler = scaler / 2
     lo_res_h = int(lo_res * scaler)
     lo_res_w = lo_res
     scorer = GridScorer(lo_res_w, lo_res_h, coord_range, masks_parameters)
