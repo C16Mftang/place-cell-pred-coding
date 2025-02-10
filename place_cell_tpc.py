@@ -17,7 +17,7 @@ from src.constants import *
 
 parser = argparse.ArgumentParser(fromfile_prefix_chars="@")
 parser.add_argument("--Np", type=int, default=512, help="Number of place cells")
-parser.add_argument("--Ng", type=int, default=2048, help="Number of grid cells")
+parser.add_argument("--Ng", type=int, default=1024, help="Number of grid cells")
 parser.add_argument("--Nv", type=int, default=2, help="Number of velocity inputs")
 parser.add_argument(
     "--DoG",
@@ -123,6 +123,8 @@ parser.add_argument(
     default='rectangle',
     help="Shape of the simulated environment."
 )
+parser.add_argument("--save_every", type=int, default=50, help="Save model interval")
+
 options = parser.parse_args()
 options.periodic = PERIODIC
 options.device = DEVICE
@@ -132,7 +134,6 @@ options.decay_step_size = DECAY_STEP_SIZE
 options.decay_rate = DECAY_RATE
 options.lambda_z = LAMBDA_Z
 options.lambda_z_init = LAMBDA_Z_INIT
-options.save_every = SAVE_EVERY
 options.place_cell_rf = PLACE_CELL_RF
 options.surround_scale = SURROUND_SCALE
 
