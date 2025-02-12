@@ -16,3 +16,4 @@ place_cell_tpc_sweep.py
 place_cell_tpc_1d.py
 .vscode
 *.egg-info
+inference.py

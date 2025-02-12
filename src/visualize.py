@@ -182,7 +182,7 @@ def compute_grid_scores(lo_res, rate_map_lo_res, options, half=False):
     )
 
     idx = np.flip(np.argsort(score_60))
-    return idx, [score_60[i] for i in idx]
+    return idx, [score_60[i] for i in idx], [sac[i] for i in idx]
 
 
 def compute_border_scores(lo_res, rate_map_lo_res, options):
