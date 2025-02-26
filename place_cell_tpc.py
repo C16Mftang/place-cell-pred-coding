@@ -26,10 +26,10 @@ parser.add_argument(
     help="Use Difference of Gaussians for place cell receptive fields",
 )
 parser.add_argument(
-    "--box_width", type=float, default=1.4, help="Width of the environment box"
+    "--box_width", type=float, default=1.6, help="Width of the environment box"
 )
 parser.add_argument(
-    "--box_height", type=float, default=1.4, help="Height of the environment box"
+    "--box_height", type=float, default=1.6, help="Height of the environment box"
 )
 parser.add_argument(
     "--sequence_length", type=int, default=10, help="Length of the trajectory sequence"
@@ -48,7 +48,7 @@ parser.add_argument(
     "--learning_rate", type=float, default=1e-4, help="Learning rate for optimization"
 )
 parser.add_argument(
-    "--inf_iters", type=int, default=20, help="Number of inference iterations"
+    "--inf_iters", type=int, default=10, help="Number of inference iterations"
 )
 parser.add_argument(
     "--test_inf_iters",
@@ -124,6 +124,12 @@ parser.add_argument(
     help="Shape of the simulated environment."
 )
 parser.add_argument("--save_every", type=int, default=50, help="Save model interval")
+parser.add_argument(
+    "--fixed_rf", 
+    type=lambda x: (str(x).lower() == "true"), 
+    default=True, 
+    help="Use fixed place cell receptive fields"
+)
 
 options = parser.parse_args()
 options.periodic = PERIODIC

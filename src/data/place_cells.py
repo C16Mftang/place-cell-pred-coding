@@ -17,6 +17,7 @@ class PlaceCells(object):
         self.device = options.device
         self.softmax = torch.nn.Softmax(dim=-1)
         self.normalize_pc = options.normalize_pc
+        self.fixed_rf = options.fixed_rf
 
         # Randomly tile place cell centers across environment
         # i.e., Np place cells, each with a randomly chosen center
@@ -50,15 +51,17 @@ class PlaceCells(object):
 
         norm2 = (d**2).sum(-1)
 
-        # Normalize place cell outputs with prefactor alpha=1/2/np.pi/self.sigma**2,
-        # or, simply normalize with softmax, which yields same normalization on
-        # average and seems to speed up training.
-        outputs = self.softmax(-norm2 / (2 * self.sigma**2))
+        # whether to use fixed or random place cell sizes, sampled from a uniform distribution in [sigma/2, 3*sigma/2]
+        if not self.fixed_rf:
+            pc_scale = torch.rand(self.Np).to(self.device) * self.sigma + self.sigma / 2
+        else:
+            pc_scale = self.sigma
+        outputs = self.softmax(-norm2 / (2 * pc_scale**2))
 
         if self.DoG:
             # Again, normalize with prefactor
             # beta=1/2/np.pi/self.sigma**2/self.surround_scale, or use softmax.
-            outputs -= self.softmax(-norm2 / (2 * self.surround_scale * self.sigma**2))
+            outputs -= self.softmax(-norm2 / (2 * self.surround_scale * pc_scale**2))
 
             if self.normalize_pc == "softmax":
                 # Shift and scale outputs so that they lie in [0,1] and sum up to 1.
