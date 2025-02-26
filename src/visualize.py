@@ -184,6 +184,130 @@ def compute_grid_scores(lo_res, rate_map_lo_res, options, half=False):
     idx = np.flip(np.argsort(score_60))
     return idx, [score_60[i] for i in idx], [sac[i] for i in idx]
 
+def compute_grid_metrics(autocorr, env_size=1.6):
+    """
+    Compute grid size and grid scale from a spatial autocorrelogram of a grid cell.
+    
+    Parameters:
+    - autocorr: 2D numpy array (e.g. 39x39) representing the spatial autocorrelogram.
+    - env_size: length of one side of the square environment in meters (default 1.6).
+    
+    Returns:
+    A dictionary with:
+      'grid_size_pixels': diameter of the center firing field in pixels,
+      'grid_size_meters': diameter of the center firing field in meters,
+      'grid_scale_pixels': spacing between center and nearest field in pixels,
+      'grid_scale_meters': spacing between center and nearest field in meters.
+    """
+    # Validate input
+    if autocorr.ndim != 2 or autocorr.shape[0] != autocorr.shape[1]:
+        raise ValueError("Autocorrelogram must be a square 2D array")
+    n = autocorr.shape[0]
+    
+    # 1. Find local maxima (peaks) in the autocorrelogram
+    peaks = []
+    for i in range(n):
+        for j in range(n):
+            val = autocorr[i, j]
+            # Check all neighbors in an 8-neighborhood
+            is_peak = True
+            has_lower_neighbor = False
+            for di in (-1, 0, 1):
+                for dj in (-1, 0, 1):
+                    if di == 0 and dj == 0:
+                        continue
+                    ni, nj = i + di, j + dj
+                    if 0 <= ni < n and 0 <= nj < n:
+                        neighbor_val = autocorr[ni, nj]
+                    else:
+                        # Treat out-of-bounds as -inf (so edges can still be peaks if appropriate)
+                        neighbor_val = float('-inf')
+                    if neighbor_val > val:
+                        is_peak = False
+                        break
+                    if neighbor_val < val:
+                        has_lower_neighbor = True
+                if not is_peak:
+                    break
+            # It's a local maximum if no neighbor is higher and at least one neighbor is lower
+            if is_peak and has_lower_neighbor:
+                peaks.append((i, j))
+    
+    if not peaks:
+        raise RuntimeError("No local maxima found in autocorrelogram.")
+
+    # 2. Identify the center field (global maximum peak)
+    peak_values = [autocorr[i, j] for (i, j) in peaks]
+    center_index = int(np.argmax(peak_values))
+    center_peak = peaks[center_index]   # coordinates of center field
+    cx, cy = center_peak                # center coordinates
+
+    # 3. Compute grid scale (distance from center peak to closest other peak)
+    nearest_dist = float('inf')
+    nearest_peak_coords = None
+    for (i, j) in peaks:
+        if (i, j) == center_peak:
+            continue
+        # Euclidean distance between center and this peak
+        dist = np.sqrt((i - cx)**2 + (j - cy)**2)
+        if dist < nearest_dist:
+            nearest_dist = dist
+            nearest_peak_coords = (i, j)  # Store coordinates of the nearest peak
+    grid_scale_px = nearest_dist
+    # Convert grid scale to meters
+    pixel_to_meter = env_size / float(n)   # conversion factor per pixel
+    grid_scale_m = grid_scale_px * pixel_to_meter
+
+    # 4. Compute grid size (diameter of central firing field)
+    # Use half of the center peak's value as threshold to define the central field region
+    peak_val = autocorr[cx, cy]
+    threshold = 0.25 * peak_val
+    # Flood-fill from the center to get all contiguous cells above threshold
+    region_points = []
+    visited = np.zeros_like(autocorr, dtype=bool)
+    stack = [center_peak]
+    visited[cx, cy] = True
+    while stack:
+        x, y = stack.pop()
+        if autocorr[x, y] < threshold:
+            continue
+        region_points.append((x, y))
+        # Explore all neighbors (8-connectivity)
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                if dx == 0 and dy == 0:
+                    continue
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < n and 0 <= ny < n and not visited[nx, ny]:
+                    visited[nx, ny] = True
+                    stack.append((nx, ny))
+    # Ensure the center is included (it should be, given threshold <= peak)
+    if center_peak not in region_points:
+        region_points.append(center_peak)
+
+    # Calculate the diameter of this region (max distance between any two points in the region)
+    coords = np.array(region_points)
+    if coords.shape[0] < 2:
+        # If region has only one point (unlikely if threshold < peak), diameter is 0
+        max_dist = 0.0
+    else:
+        # Compute pairwise distances and find the maximum
+        diff = coords[:, None, :] - coords[None, :, :]
+        dist_sq = np.sum(diff**2, axis=-1)
+        max_dist_sq = dist_sq.max()
+        max_dist = float(np.sqrt(max_dist_sq))
+    grid_size_px = max_dist
+    # Convert grid size to meters
+    grid_size_m = grid_size_px * pixel_to_meter
+    
+    # 5. Return the results in both pixels and meters, and the nearest peak's coordinates
+    return {
+        'grid_size_pixels': grid_size_px,
+        'grid_size_meters': grid_size_m,
+        'grid_scale_pixels': grid_scale_px,
+        'grid_scale_meters': grid_scale_m,
+    }
+
 
 def compute_border_scores(lo_res, rate_map_lo_res, options):
     scores = [border_score(rm, lo_res, options.box_width)[0] for rm in rate_map_lo_res]
