@@ -140,7 +140,7 @@ class Trainer(object):
                 # Save checkpoint
                 ckpt_path = os.path.join(
                     self.ckpt_dir, 
-                    f'epoch_{epoch_idx}.pth'
+                    f'epoch_{epoch_idx + 1}.pth'
                 )
                 torch.save(self.model.state_dict(), ckpt_path)
                 torch.save(

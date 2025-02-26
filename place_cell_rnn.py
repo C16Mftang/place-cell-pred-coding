@@ -103,6 +103,7 @@ parser.add_argument(
     default='rectangle',
     help="Shape of the simulated environment."
 )
+parser.add_argument("--save_every", type=int, default=50, help="Save model interval")
 options = parser.parse_args()
 options.periodic = PERIODIC
 options.device = DEVICE
@@ -110,7 +111,6 @@ options.oned = ONED
 options.weight_decay = WEIGHT_DECAY
 options.decay_step_size = DECAY_STEP_SIZE
 options.decay_rate = DECAY_RATE
-options.save_every = SAVE_EVERY
 options.place_cell_rf = PLACE_CELL_RF
 options.surround_scale = SURROUND_SCALE
 
@@ -170,8 +170,9 @@ else:
     generator = TrajectoryGenerator(options, place_cell, environment=options.env_shape)
     trainer = Trainer(options, model, generator, place_cell, restore=False)
     print("Generating rate maps...")
+    full_res = 30
     rate_map = compute_ratemaps(
-        model, trainer, generator, options, res=30, n_avg=200, Ng=options.Ng
+        model, trainer, generator, options, res=full_res, n_avg=200, Ng=options.Ng
     )
 
     # calculate grid scores
@@ -182,11 +183,11 @@ else:
     )
     # scores are already sorted in descending order
     print("Calculating grid scores...")
-    idx, scores = compute_grid_scores(
+    idx, scores, sacs = compute_grid_scores(
         lo_res, rate_map_lo_res, options
     )  # descending order
     # select the top grid cells
-    plot_all_ratemaps(rate_map[idx], options, scores)
+    plot_all_ratemaps(rate_map[idx], options, full_res, scores)
 
     # save scores
     np.save(os.path.join(save_dir, "grid_scores.npy"), scores)

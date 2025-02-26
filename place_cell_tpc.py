@@ -212,16 +212,17 @@ else:
     )
     # scores are already sorted in descending order
     print("Calculating grid scores...")
-    idx, scores = compute_grid_scores(lo_res, rate_map_lo_res, options)  # descending order
+    idx, scores, sacs = compute_grid_scores(lo_res, rate_map_lo_res, options)  # descending order
     # select the top grid cells
     plot_all_ratemaps(rate_map[idx], options, full_res, scores)
+    np.save(os.path.join(save_dir, "sac.npy"), sacs)
 
     # grid scores for half of the fields
     field_height = rate_map_lo_res.shape[-1]
-    _, left_scores = compute_grid_scores(
+    _, left_scores, _ = compute_grid_scores(
         lo_res, rate_map_lo_res[:, :, :field_height // 2], options, half=True
     )
-    _, right_scores = compute_grid_scores(
+    _, right_scores, _ = compute_grid_scores(
         lo_res, rate_map_lo_res[:, :, field_height // 2:], options, half=True
     )
 
