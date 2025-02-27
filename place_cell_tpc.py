@@ -125,10 +125,7 @@ parser.add_argument(
 )
 parser.add_argument("--save_every", type=int, default=50, help="Save model interval")
 parser.add_argument(
-    "--fixed_rf", 
-    type=lambda x: (str(x).lower() == "true"), 
-    default=True, 
-    help="Use fixed place cell receptive fields"
+    "--rf_std", type=float, default=0, help="Standard deviation of place cell RFs"
 )
 
 options = parser.parse_args()

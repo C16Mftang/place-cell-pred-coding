@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import numpy as np
 import matplotlib.pyplot as plt
 import os
 import time
@@ -130,6 +131,11 @@ def generate_run_ID(options):
     run_ID = run_ID.replace('.', '')
 
     return run_ID
+
+def lognormal_sampler(mean, std, num_samples):
+    mu = np.log((mean**2) / np.sqrt(mean**2 + std**2))
+    sigma = np.sqrt(np.log(1 + (std**2) / (mean**2)))
+    return np.exp(np.random.normal(mu, sigma, num_samples))
 
 def ce_loss(output, _target):
     pred = F.softmax(output, dim=-1)

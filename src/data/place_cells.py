@@ -2,7 +2,7 @@
 import numpy as np
 import torch
 import scipy
-
+from src.utils import lognormal_sampler
 
 class PlaceCells(object):
 
@@ -17,7 +17,7 @@ class PlaceCells(object):
         self.device = options.device
         self.softmax = torch.nn.Softmax(dim=-1)
         self.normalize_pc = options.normalize_pc
-        self.fixed_rf = options.fixed_rf
+        self.rf_std = options.rf_std
 
         # Randomly tile place cell centers across environment
         # i.e., Np place cells, each with a randomly chosen center
@@ -52,8 +52,9 @@ class PlaceCells(object):
         norm2 = (d**2).sum(-1)
 
         # whether to use fixed or random place cell sizes, sampled from a uniform distribution in [sigma/2, 3*sigma/2]
-        if not self.fixed_rf:
-            pc_scale = torch.rand(self.Np).to(self.device) * self.sigma + self.sigma / 2
+        if self.rf_std != 0:
+            # pc_scale = torch.rand(self.Np).to(self.device) * self.sigma + self.sigma / 2
+            pc_scale = torch.tensor(lognormal_sampler(self.sigma, self.rf_std, self.Np)).to(self.device, dtype=torch.float32)
         else:
             pc_scale = self.sigma
         outputs = self.softmax(-norm2 / (2 * pc_scale**2))
