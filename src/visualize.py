@@ -184,28 +184,13 @@ def compute_grid_scores(lo_res, rate_map_lo_res, options, half=False):
     idx = np.flip(np.argsort(score_60))
     return idx, [score_60[i] for i in idx], [sac[i] for i in idx]
 
-def compute_grid_metrics(autocorr, env_size=1.6):
-    """
-    Compute grid size and grid scale from a spatial autocorrelogram of a grid cell.
-    
-    Parameters:
-    - autocorr: 2D numpy array (e.g. 39x39) representing the spatial autocorrelogram.
-    - env_size: length of one side of the square environment in meters (default 1.6).
-    
-    Returns:
-    A dictionary with:
-      'grid_size_pixels': diameter of the center firing field in pixels,
-      'grid_size_meters': diameter of the center firing field in meters,
-      'grid_scale_pixels': spacing between center and nearest field in pixels,
-      'grid_scale_meters': spacing between center and nearest field in meters.
-    """
-    # Validate input
-    if autocorr.ndim != 2 or autocorr.shape[0] != autocorr.shape[1]:
-        raise ValueError("Autocorrelogram must be a square 2D array")
-    n = autocorr.shape[0]
-    
-    # 1. Find local maxima (peaks) in the autocorrelogram
+def find_global_maxima(field):
+    max_index = np.unravel_index(np.argmax(field), field.shape)
+    return max_index
+
+def find_local_maxima(autocorr):
     peaks = []
+    n = autocorr.shape[0]
     for i in range(n):
         for j in range(n):
             val = autocorr[i, j]
@@ -235,16 +220,12 @@ def compute_grid_metrics(autocorr, env_size=1.6):
     
     if not peaks:
         raise RuntimeError("No local maxima found in autocorrelogram.")
+    return peaks
 
-    # 2. Identify the center field (global maximum peak)
-    peak_values = [autocorr[i, j] for (i, j) in peaks]
-    center_index = int(np.argmax(peak_values))
-    center_peak = peaks[center_index]   # coordinates of center field
-    cx, cy = center_peak                # center coordinates
-
-    # 3. Compute grid scale (distance from center peak to closest other peak)
+def get_grid_scale(peaks, center_peak, pixel_to_meter):
     nearest_dist = float('inf')
     nearest_peak_coords = None
+    cx, cy = center_peak
     for (i, j) in peaks:
         if (i, j) == center_peak:
             continue
@@ -254,22 +235,22 @@ def compute_grid_metrics(autocorr, env_size=1.6):
             nearest_dist = dist
             nearest_peak_coords = (i, j)  # Store coordinates of the nearest peak
     grid_scale_px = nearest_dist
-    # Convert grid scale to meters
-    pixel_to_meter = env_size / float(n)   # conversion factor per pixel
     grid_scale_m = grid_scale_px * pixel_to_meter
+    return grid_scale_px, grid_scale_m
 
-    # 4. Compute grid size (diameter of central firing field)
-    # Use half of the center peak's value as threshold to define the central field region
-    peak_val = autocorr[cx, cy]
-    threshold = 0.25 * peak_val
+def find_central_field_pixels(field, cx, cy, size_thresh_scaler=0.15):
+    n = field.shape[0]
+    center_peak = (cx, cy)
+    peak_val = field[cx, cy]
+    threshold = size_thresh_scaler * peak_val
     # Flood-fill from the center to get all contiguous cells above threshold
     region_points = []
-    visited = np.zeros_like(autocorr, dtype=bool)
+    visited = np.zeros_like(field, dtype=bool)
     stack = [center_peak]
     visited[cx, cy] = True
     while stack:
         x, y = stack.pop()
-        if autocorr[x, y] < threshold:
+        if field[x, y] < threshold:
             continue
         region_points.append((x, y))
         # Explore all neighbors (8-connectivity)
@@ -285,8 +266,11 @@ def compute_grid_metrics(autocorr, env_size=1.6):
     if center_peak not in region_points:
         region_points.append(center_peak)
 
-    # Calculate the diameter of this region (max distance between any two points in the region)
     coords = np.array(region_points)
+    return coords
+
+
+def compute_diameter(coords, pixel_to_meter):
     if coords.shape[0] < 2:
         # If region has only one point (unlikely if threshold < peak), diameter is 0
         max_dist = 0.0
@@ -299,6 +283,41 @@ def compute_grid_metrics(autocorr, env_size=1.6):
     grid_size_px = max_dist
     # Convert grid size to meters
     grid_size_m = grid_size_px * pixel_to_meter
+    return grid_size_px, grid_size_m
+
+
+def compute_grid_metrics(autocorr, env_size=1.6, size_thresh_scaler=0.25):
+    """
+    Compute grid size and grid scale from a spatial autocorrelogram of a grid cell.
+    
+    Parameters:
+    - autocorr: 2D numpy array (e.g. 39x39) representing the spatial autocorrelogram.
+    - env_size: length of one side of the square environment in meters (default 1.6).
+    
+    Returns:
+    A dictionary with:
+      'grid_size_pixels': diameter of the center firing field in pixels,
+      'grid_size_meters': diameter of the center firing field in meters,
+      'grid_scale_pixels': spacing between center and nearest field in pixels,
+      'grid_scale_meters': spacing between center and nearest field in meters.
+    """
+    # Validate input
+    if autocorr.ndim != 2 or autocorr.shape[0] != autocorr.shape[1]:
+        raise ValueError("Autocorrelogram must be a square 2D array")
+    n = autocorr.shape[0]
+    # Convert grid scale to meters
+    pixel_to_meter = env_size / float(n)   # conversion factor per pixel
+    
+    # 1. Find the local maxima
+    peaks = find_local_maxima(autocorr)
+    # 2. Find the global maximum
+    center_peak = find_global_maxima(autocorr)
+    # 3. Compute the grid scale as the distance between the center and the nearest peak
+    grid_scale_px, grid_scale_m = get_grid_scale(peaks, center_peak, pixel_to_meter)
+    # 4. Find the central field pixels
+    central_field_coords = find_central_field_pixels(autocorr, *center_peak, size_thresh_scaler)
+    # 5. Compute the grid size as the diameter of the central field
+    grid_size_px, grid_size_m = compute_diameter(central_field_coords, pixel_to_meter)
     
     # 5. Return the results in both pixels and meters, and the nearest peak's coordinates
     return {

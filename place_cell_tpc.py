@@ -42,7 +42,7 @@ parser.add_argument(
     "--n_epochs", type=int, default=150, help="Number of training epochs"
 )
 parser.add_argument(
-    "--n_steps", type=int, default=100, help="Number of steps in each trajectory"
+    "--n_steps", type=int, default=100, help="Number of batches"
 )
 parser.add_argument(
     "--learning_rate", type=float, default=1e-4, help="Learning rate for optimization"
@@ -169,6 +169,7 @@ if options.mode == "train":
     )
     plot_2d_ratemaps(rate_map, options, n_col=4, res=res)
     plot_loss_err(trainer, options)
+    np.save(os.path.join(options.save_dir, "loss"), trainer.loss)
 
 else:
     now = options.mode
