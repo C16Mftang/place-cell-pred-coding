@@ -155,6 +155,7 @@ parser.add_argument(
 parser.add_argument(
     "--rf_std", type=float, default=0, help="Standard deviation of place cell RFs"
 )
+parser.add_argument("--sample_size", type=int, default=500000)
 options = parser.parse_args()
 
 options.save_dir = os.path.join(
@@ -162,25 +163,24 @@ options.save_dir = os.path.join(
 )
 if not os.path.exists(options.save_dir):
     os.makedirs(options.save_dir)
-os.makedirs(os.path.join(options.save_dir, 'models'))
+if not os.path.exists(os.path.join(options.save_dir, 'models')):
+    os.makedirs(os.path.join(options.save_dir, 'models'))
 
 place_cells = PlaceCells(options)
 trajectory_generator = TrajectoryGenerator(options, place_cells)
 
-# Generate positions on a 30x30 grid
+# Generate 500k random positions that covers the space
 # each position can then be represented as Np-dimensional vector by place cells
 # this provides a 30x30 approximation of the whole environment
-pos = np.array(
-    np.meshgrid(
-        np.linspace(-options.box_width / 2, options.box_width / 2, options.res),
-        np.linspace(-options.box_height / 2, options.box_height / 2, options.res),
-    )
-).T
+usx = np.random.uniform(-options.box_width/2, options.box_width/2, (options.sample_size,))
+usy = np.random.uniform(-options.box_width/2, options.box_width/2, (options.sample_size,))
+pos = np.vstack([usx, usy]).T
+pos = pos[:, None, ...]
 pos = torch.tensor(pos).to(device)
 
 # get place cell activations
 pc_outputs = place_cells.get_activation(pos).detach().cpu()
-pc_outputs = pc_outputs.reshape(options.res ** 2, options.Np)
+pc_outputs = pc_outputs.reshape(-1, options.Np)
 pc_outputs = pc_outputs - pc_outputs.mean(dim=0, keepdim=True)
 
 # Train the PCN
@@ -192,7 +192,7 @@ pcn = MultilayerPCN(
     use_bias=False,
     relu_inf=options.relu_inf,
 ).to(device)
-X = torch.tensor(pc_outputs).to(device)
+X = pc_outputs.to(device)
 optimizer = torch.optim.Adam(
     pcn.parameters(), lr=options.learning_lr, weight_decay=options.weight_decay
 )
@@ -201,10 +201,9 @@ scheduler = torch.optim.lr_scheduler.StepLR(
 )
 
 train_mses = []
-sample_size = int(options.res ** 2)
 for i in range(options.learning_iters):
     iter_loss = 0
-    tbar = tqdm(range(0, sample_size, options.batch_size))
+    tbar = tqdm(range(0, options.sample_size, options.batch_size))
     for batch_idx in tbar:
         data = X[batch_idx : batch_idx + options.batch_size]
         optimizer.zero_grad()
@@ -220,11 +219,12 @@ for i in range(options.learning_iters):
             )
         )
 
-    train_mse = iter_loss / (sample_size / options.batch_size)
+    train_mse = iter_loss / (options.sample_size / options.batch_size)
     train_mses.append(train_mse)
     scheduler.step()
 
-    torch.save(pcn, os.path.join(options.save_dir, 'models', f'model{i}.pth'))
+    if options.learning_iters < 30:
+        torch.save(pcn.state_dict(), os.path.join(options.save_dir, 'models', f'model{i}.pth'))
 
 # Plot the training loss and save
 plt.plot(train_mses)
@@ -234,11 +234,19 @@ plt.title("Training Loss")
 plt.savefig(os.path.join(options.save_dir, "training_loss.png"))
 plt.close()
 
-# save model
-# torch.save(pcn.state_dict(), options.save_dir + 'pcn.pth')
-
 pcn.set_sparsity(0.0)
-pcn.inference(X, options.inference_iters, options.inference_lr_test)
+pos_test = np.array(
+    np.meshgrid(
+        np.linspace(-options.box_width / 2, options.box_width / 2, options.res),
+        np.linspace(-options.box_height / 2, options.box_height / 2, options.res),
+    )
+).T
+pos_test = torch.tensor(pos_test).to(device)
+
+pc_outputs_test = place_cells.get_activation(pos_test).detach()
+pc_outputs_test = pc_outputs_test.reshape(options.res ** 2, options.Np)
+pc_outputs_test = pc_outputs_test - pc_outputs_test.mean(dim=0, keepdim=True)
+pcn.inference(pc_outputs_test, options.inference_iters, options.inference_lr_test)
 gcs = pcn.val_nodes[0].clone().detach().cpu().numpy().T  # [Ng, res**2]
 # visualize_grid_cells(gcs, options.learning_iters, options)
 gcs = gcs.reshape((-1, options.res, options.res))
