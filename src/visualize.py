@@ -222,19 +222,19 @@ def find_local_maxima(autocorr):
         raise RuntimeError("No local maxima found in autocorrelogram.")
     return peaks
 
-def get_grid_scale(peaks, center_peak, pixel_to_meter):
+def get_grid_scale(peaks, center_peak, pixel_to_meter, method='nearest'):
     nearest_dist = float('inf')
     nearest_peak_coords = None
     cx, cy = center_peak
+    dists = []
     for (i, j) in peaks:
         if (i, j) == center_peak:
             continue
         # Euclidean distance between center and this peak
         dist = np.sqrt((i - cx)**2 + (j - cy)**2)
-        if dist < nearest_dist:
-            nearest_dist = dist
-            nearest_peak_coords = (i, j)  # Store coordinates of the nearest peak
-    grid_scale_px = nearest_dist
+        dists.append(dist)
+    nearest_dists = np.sort(dists)[:6]
+    grid_scale_px = np.mean(nearest_dists) if method != 'nearest' else nearest_dists[0]
     grid_scale_m = grid_scale_px * pixel_to_meter
     return grid_scale_px, grid_scale_m
 
@@ -286,7 +286,7 @@ def compute_diameter(coords, pixel_to_meter):
     return grid_size_px, grid_size_m
 
 
-def compute_grid_metrics(autocorr, env_size=1.6, size_thresh_scaler=0.25):
+def compute_grid_metrics(autocorr, env_size=1.6, size_thresh_scaler=0.25, scale_method='nearest'):
     """
     Compute grid size and grid scale from a spatial autocorrelogram of a grid cell.
     
@@ -313,7 +313,7 @@ def compute_grid_metrics(autocorr, env_size=1.6, size_thresh_scaler=0.25):
     # 2. Find the global maximum
     center_peak = find_global_maxima(autocorr)
     # 3. Compute the grid scale as the distance between the center and the nearest peak
-    grid_scale_px, grid_scale_m = get_grid_scale(peaks, center_peak, pixel_to_meter)
+    grid_scale_px, grid_scale_m = get_grid_scale(peaks, center_peak, pixel_to_meter, method=scale_method)
     # 4. Find the central field pixels
     central_field_coords = find_central_field_pixels(autocorr, *center_peak, size_thresh_scaler)
     # 5. Compute the grid size as the diameter of the central field
