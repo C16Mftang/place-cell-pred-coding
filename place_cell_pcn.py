@@ -75,7 +75,7 @@ parser.add_argument(
     help="Directory to save the models",
 )
 parser.add_argument("--Np", type=int, default=512, help="Number of place cells")
-parser.add_argument("--Ng", type=int, default=256, help="Number of grid cells")
+parser.add_argument("--Ng", type=int, default=1024, help="Number of grid cells")
 parser.add_argument(
     "--place_cell_rf",
     type=float,
@@ -101,10 +101,10 @@ parser.add_argument(
     help="Trajectories with periodic boundary conditions",
 )
 parser.add_argument(
-    "--box_width", type=float, default=1.4, help="Width of training environment"
+    "--box_width", type=float, default=1.6, help="Width of training environment"
 )
 parser.add_argument(
-    "--box_height", type=float, default=1.4, help="Height of training environment"
+    "--box_height", type=float, default=1.6, help="Height of training environment"
 )
 parser.add_argument(
     "--out_activation", type=str, default="linear", help="Nonlinearity function"
@@ -122,7 +122,7 @@ parser.add_argument(
     "--inference_iters", type=int, default=20, help="Number of inference iterations"
 )
 parser.add_argument(
-    "--learning_lr", type=float, default=1e-3, help="Learning rate for training"
+    "--learning_lr", type=float, default=1e-4, help="Learning rate for training"
 )
 parser.add_argument(
     "--learning_iters", type=int, default=400, help="Number of training iterations"
@@ -223,10 +223,11 @@ for i in range(options.learning_iters):
     train_mses.append(train_mse)
     scheduler.step()
 
-    if options.learning_iters < 30:
+    if options.learning_iters <= 30:
         torch.save(pcn.state_dict(), os.path.join(options.save_dir, 'models', f'model{i}.pth'))
 
 # Plot the training loss and save
+np.save(os.path.join(options.save_dir, "training_loss.npy"), np.array(train_mses))
 plt.plot(train_mses)
 plt.xlabel("Epoch")
 plt.ylabel("Energy")
