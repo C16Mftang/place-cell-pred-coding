@@ -64,27 +64,6 @@ def plot_all_ratemaps(rate_map, scores, options):
         plt.savefig(os.path.join(all_dir, f"2d_ratemaps_{i}.png"))
         plt.close(fig)
 
-def collect_grid_metrics(pcn, options, epoch):
-    epoch_dir = os.path.join(options.save_dir, f"epoch{epoch}")
-    if not os.path.exists(epoch_dir):
-        os.makedirs(epoch_dir)
-    pcn.set_sparsity(0.0)
-    pcn.inference(X, options.inference_iters, options.inference_lr_test)
-    gcs = pcn.val_nodes[0].clone().detach().cpu().numpy().T  # [Ng, res**2]
-    # visualize_grid_cells(gcs, options.learning_iters, options)
-    gcs = gcs.reshape((-1, options.res, options.res))
-    idx, scores, sacs = compute_grid_scores(options.res, gcs, options)
-    sorted_gcs = gcs[idx]
-    plot_all_ratemaps(sorted_gcs, scores, options)
-    np.savez(
-        os.path.join(epoch_dir, "gc_sac_scores.npz"), 
-        gcs=sorted_gcs, 
-        scores=scores,
-        sacs=sacs
-    )
-    pcn.set_sparsity(options.lambda_z_init)
-
-
 # Training options and hyperparameters
 parser = argparse.ArgumentParser()
 
