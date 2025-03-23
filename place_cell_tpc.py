@@ -127,6 +127,12 @@ parser.add_argument("--save_every", type=int, default=50, help="Save model inter
 parser.add_argument(
     "--rf_std", type=float, default=0, help="Standard deviation of place cell RFs"
 )
+parser.add_argument(
+    "--discrete", 
+    type=lambda x: (str(x).lower() == "true"), 
+    default=False, 
+    help="Whether to use discrete place cell sizes"
+)
 
 options = parser.parse_args()
 options.periodic = PERIODIC

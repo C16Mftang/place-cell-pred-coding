@@ -18,6 +18,7 @@ class PlaceCells(object):
         self.softmax = torch.nn.Softmax(dim=-1)
         self.normalize_pc = options.normalize_pc
         self.rf_std = options.rf_std
+        self.discrete = options.discrete
 
         # Randomly tile place cell centers across environment
         # i.e., Np place cells, each with a randomly chosen center
@@ -51,12 +52,19 @@ class PlaceCells(object):
 
         norm2 = (d**2).sum(-1)
 
-        # whether to use fixed or random place cell sizes, sampled from a uniform distribution in [sigma/2, 3*sigma/2]
-        if self.rf_std != 0:
-            # pc_scale = torch.rand(self.Np).to(self.device) * self.sigma + self.sigma / 2
-            pc_scale = torch.tensor(lognormal_sampler(self.sigma, self.rf_std, self.Np)).to(self.device, dtype=torch.float32)
+        if self.discrete:
+            pc_scale = torch.tensor(np.random.choice(
+                [self.sigma, 2 * self.sigma, 3 * self.sigma], 
+                self.Np, 
+                p=[0.6, 0.25, 0.15]
+            )).to(self.device, dtype=torch.float32)
         else:
-            pc_scale = self.sigma
+            # whether to use fixed or random place cell sizes, sampled from a uniform distribution in [sigma/2, 3*sigma/2]
+            if self.rf_std != 0:
+                # pc_scale = torch.rand(self.Np).to(self.device) * self.sigma + self.sigma / 2
+                pc_scale = torch.tensor(lognormal_sampler(self.sigma, self.rf_std, self.Np)).to(self.device, dtype=torch.float32)
+            else:
+                pc_scale = self.sigma
         outputs = self.softmax(-norm2 / (2 * pc_scale**2))
 
         if self.DoG:
