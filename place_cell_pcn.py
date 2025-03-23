@@ -3,6 +3,7 @@ import torch
 import os
 from matplotlib import pyplot as plt
 import argparse
+import time
 from tqdm import tqdm
 
 from src.data.place_cells import PlaceCells
@@ -12,30 +13,6 @@ from src.model import *
 from src.visualize import compute_grid_scores
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
-
-
-def visualize_grid_cells(gcs, epoch, options):
-    # visualize latent space
-    n_show = 10
-    # set seed
-    np.random.seed(0)
-    select = np.random.choice(gcs.shape[0], n_show ** 2, replace=False)
-    # sort the select
-    select = np.sort(select)
-    gcs = gcs[select]
-    fig, axes = plt.subplots(n_show, n_show, figsize=(10, 10))
-    for i, ax in enumerate(axes.flat):
-        gc = gcs[i].real.reshape((options.res, options.res))
-        gc = (gc - np.min(gc)) / (np.max(gc) - np.min(gc) + 1e-6)
-        im = ax.imshow(gc, cmap="jet")
-        ax.set_title(f"latent {select[i]}", fontsize=8)
-        ax.axis("off")
-
-    fig.subplots_adjust(right=0.8)
-    cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
-    fig.colorbar(im, cax=cbar_ax)
-    plt.savefig(options.save_dir + f"latent_space_epoch{epoch}.png")
-    plt.close()
 
 
 def plot_all_ratemaps(rate_map, scores, options):
@@ -63,6 +40,7 @@ def plot_all_ratemaps(rate_map, scores, options):
         plt.tight_layout()
         plt.savefig(os.path.join(all_dir, f"2d_ratemaps_{i}.png"))
         plt.close(fig)
+
 
 # Training options and hyperparameters
 parser = argparse.ArgumentParser()
@@ -122,6 +100,12 @@ parser.add_argument(
     "--inference_iters", type=int, default=20, help="Number of inference iterations"
 )
 parser.add_argument(
+    "--inference_iters_test",
+    type=int,
+    default=10,
+    help="Number of inference iterations during test",
+)
+parser.add_argument(
     "--learning_lr", type=float, default=1e-4, help="Learning rate for training"
 )
 parser.add_argument(
@@ -133,7 +117,7 @@ parser.add_argument(
     "--decay_step_size", type=int, default=10, help="Step size for learning rate decay"
 )
 parser.add_argument(
-    "--decay_rate", type=float, default=1., help="Decay rate for learning rate"
+    "--decay_rate", type=float, default=1.0, help="Decay rate for learning rate"
 )
 parser.add_argument("--weight_decay", type=float, default=1e-5, help="Weight decay")
 parser.add_argument("--loss", type=str, default="MSE", help="Loss function")
@@ -155,16 +139,18 @@ parser.add_argument(
 parser.add_argument(
     "--rf_std", type=float, default=0, help="Standard deviation of place cell RFs"
 )
-parser.add_argument("--sample_size", type=int, default=500000)
+parser.add_argument("--save_every", type=int, default=2, help="Save model interval")
+parser.add_argument("--sample_size", type=int, default=100000)
 options = parser.parse_args()
 
-options.save_dir = os.path.join(
-    options.save_dir, f"sparse_{(options.lambda_z_init != 0)}_relu_{options.relu_inf}"
-)
+now = time.strftime("%b-%d-%Y-%H-%M-%S", time.gmtime(time.time()))
+options.save_dir = os.path.join("./results/pcn", now)
 if not os.path.exists(options.save_dir):
     os.makedirs(options.save_dir)
-if not os.path.exists(os.path.join(options.save_dir, 'models')):
-    os.makedirs(os.path.join(options.save_dir, 'models'))
+if not os.path.exists(os.path.join(options.save_dir, "models")):
+    os.makedirs(os.path.join(options.save_dir, "models"))
+print("Saving to:", options.save_dir)
+utils.save_options_to_json(options, os.path.join(options.save_dir, "configs.json"))
 
 place_cells = PlaceCells(options)
 trajectory_generator = TrajectoryGenerator(options, place_cells)
@@ -172,8 +158,12 @@ trajectory_generator = TrajectoryGenerator(options, place_cells)
 # Generate 500k random positions that covers the space
 # each position can then be represented as Np-dimensional vector by place cells
 # this provides a 30x30 approximation of the whole environment
-usx = np.random.uniform(-options.box_width/2, options.box_width/2, (options.sample_size,))
-usy = np.random.uniform(-options.box_width/2, options.box_width/2, (options.sample_size,))
+usx = np.random.uniform(
+    -options.box_width / 2, options.box_width / 2, (options.sample_size,)
+)
+usy = np.random.uniform(
+    -options.box_width / 2, options.box_width / 2, (options.sample_size,)
+)
 pos = np.vstack([usx, usy]).T
 pos = pos[:, None, ...]
 pos = torch.tensor(pos).to(device)
@@ -223,8 +213,11 @@ for i in range(options.learning_iters):
     train_mses.append(train_mse)
     scheduler.step()
 
-    if options.learning_iters <= 30:
-        torch.save(pcn.state_dict(), os.path.join(options.save_dir, 'models', f'model{i}.pth'))
+    if (i + 1) % options.save_every == 0:
+        torch.save(
+            pcn.state_dict(),
+            os.path.join(options.save_dir, "models", f"model{i+1}.pth"),
+        )
 
 # Plot the training loss and save
 np.save(os.path.join(options.save_dir, "training_loss.npy"), np.array(train_mses))
@@ -236,27 +229,55 @@ plt.savefig(os.path.join(options.save_dir, "training_loss.png"))
 plt.close()
 
 pcn.set_sparsity(0.0)
-pos_test = np.array(
-    np.meshgrid(
-        np.linspace(-options.box_width / 2, options.box_width / 2, options.res),
-        np.linspace(-options.box_height / 2, options.box_height / 2, options.res),
-    )
-).T
-pos_test = torch.tensor(pos_test).to(device)
+options.sequence_length = 1
+options.dt = 0.01
+n_avg = 200
+g = np.zeros([n_avg, options.batch_size * options.sequence_length, options.Ng])
+pos = np.zeros([n_avg, options.batch_size * options.sequence_length, 2])
+activations = np.zeros([options.Ng, options.res, options.res])
+counts = np.zeros([options.res, options.res])
+for index in tqdm(range(n_avg)):
+    # pos_batch: [batch_size, sequence_length, 2]
+    _, _, pos_batch = trajectory_generator.get_test_batch()
 
-pc_outputs_test = place_cells.get_activation(pos_test).detach()
-pc_outputs_test = pc_outputs_test.reshape(options.res ** 2, options.Np)
-pc_outputs_test = pc_outputs_test - pc_outputs_test.mean(dim=0, keepdim=True)
-pcn.inference(pc_outputs_test, options.inference_iters, options.inference_lr_test)
-gcs = pcn.val_nodes[0].clone().detach().cpu().numpy().T  # [Ng, res**2]
-# visualize_grid_cells(gcs, options.learning_iters, options)
-gcs = gcs.reshape((-1, options.res, options.res))
-idx, scores, sacs = compute_grid_scores(options.res, gcs, options)
-sorted_gcs = gcs[idx]
+    pc_outputs_test = place_cells.get_activation(pos_batch).detach()
+    pc_outputs_test = pc_outputs_test.reshape((-1, options.Np))
+    pc_outputs_test = pc_outputs_test - pc_outputs_test.mean(dim=0, keepdim=True)
+    pcn.inference(
+        pc_outputs_test, options.inference_iters_test, options.inference_lr_test
+    )
+    g_batch = pcn.val_nodes[0].clone().detach().cpu().numpy()  # [Ng, res**2]
+    pos_batch = np.reshape(pos_batch.cpu().detach().numpy(), [-1, 2])
+
+    g[index] = g_batch
+    pos[index] = pos_batch
+
+    x_batch = (
+        (pos_batch[:, 0] + options.box_width / 2) / (options.box_width) * options.res
+    )
+    y_batch = (
+        (pos_batch[:, 1] + options.box_height / 2) / (options.box_height) * options.res
+    )
+
+    for i in range(options.batch_size * options.sequence_length):
+        x = x_batch[i]
+        y = y_batch[i]
+        if x >= 0 and x < options.res and y >= 0 and y < options.res:
+            counts[int(x), int(y)] += 1
+            activations[:, int(x), int(y)] += g_batch[i, :]
+
+# make it a density map
+for x in range(options.res):
+    for y in range(options.res):
+        if counts[x, y] > 0:
+            activations[:, x, y] /= counts[x, y]
+
+g = g.reshape([-1, options.Ng])
+pos = pos.reshape([-1, 2])
+
+# # scipy binned_statistic_2d is slightly slower
+# activations = scipy.stats.binned_statistic_2d(pos[:,0], pos[:,1], g.T, bins=res)[0]
+idx, scores, sacs = compute_grid_scores(options.res, activations, options)
+sorted_gcs = activations[idx]
 plot_all_ratemaps(sorted_gcs, scores, options)
-np.savez(
-    os.path.join(options.save_dir, "gc_sac_scores.npz"), 
-    gcs=sorted_gcs, 
-    scores=scores,
-    sacs=sacs
-)
+
