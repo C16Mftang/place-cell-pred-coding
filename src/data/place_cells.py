@@ -54,7 +54,7 @@ class PlaceCells(object):
 
         if self.discrete:
             pc_scale = torch.tensor(np.random.choice(
-                [self.sigma, 2 * self.sigma, 3 * self.sigma], 
+                [self.sigma, 1.5 * self.sigma, 2 * self.sigma], 
                 self.Np, 
                 p=[0.6, 0.25, 0.15]
             )).to(self.device, dtype=torch.float32)
