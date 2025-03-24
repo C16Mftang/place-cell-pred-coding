@@ -67,7 +67,10 @@ class TrajectoryGenerator(object):
     def generate_trajectory(self, box_width, box_height, batch_size):
         """Generate a random walk in a rectangular box"""
         samples = self.options.sequence_length
-        dt = self.options.dt  # time step increment (seconds)
+        if len(self.options.dt) > 0:
+            dt = np.random.choice(self.options.dt, size=batch_size)  # time step increment (seconds)
+        else:
+            dt = self.options.dt  # time step increment (seconds)
         sigma = 5.76 * 2  # stdev rotation velocity (rads/sec)
         b = 0.13 * 2 * np.pi  # forward velocity rayleigh dist scale (m/sec)
         mu = 0  # turn angle bias

@@ -34,7 +34,7 @@ parser.add_argument(
 parser.add_argument(
     "--sequence_length", type=int, default=10, help="Length of the trajectory sequence"
 )
-parser.add_argument("--dt", type=float, default=0.02, help="Time step size")
+parser.add_argument("--dt", type=float, default=0.02, nargs='+', help="Time step size")
 parser.add_argument(
     "--batch_size", type=int, default=500, help="Batch size for training"
 )
