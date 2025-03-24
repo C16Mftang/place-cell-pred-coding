@@ -54,7 +54,7 @@ class PlaceCells(object):
 
         if self.place_cell_rf_prob is not None:
             pc_scale = torch.tensor(np.random.choice(
-                [self.sigma, 1.5 * self.sigma, 2 * self.sigma], 
+                [self.sigma, 2 * self.sigma, 2.5 * self.sigma], 
                 self.Np, 
                 p=self.place_cell_rf_prob
             )).to(self.device, dtype=torch.float32)
