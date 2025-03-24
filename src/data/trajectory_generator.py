@@ -67,7 +67,7 @@ class TrajectoryGenerator(object):
     def generate_trajectory(self, box_width, box_height, batch_size):
         """Generate a random walk in a rectangular box"""
         samples = self.options.sequence_length
-        if len(self.options.dt) > 0:
+        if isinstance(self.options.dt, list):
             dt = np.random.choice(self.options.dt, size=batch_size)  # time step increment (seconds)
         else:
             dt = self.options.dt  # time step increment (seconds)
