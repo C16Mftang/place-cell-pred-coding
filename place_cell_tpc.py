@@ -124,14 +124,16 @@ parser.add_argument(
     help="Shape of the simulated environment."
 )
 parser.add_argument("--save_every", type=int, default=50, help="Save model interval")
+parser.add_argument("--place_cell_rf", type=float, default=0.12, help='diameter of place fields')
 parser.add_argument(
     "--rf_std", type=float, default=0, help="Standard deviation of place cell RFs"
 )
 parser.add_argument(
-    "--discrete", 
-    type=lambda x: (str(x).lower() == "true"), 
-    default=False, 
-    help="Whether to use discrete place cell sizes"
+    "--place_cell_rf_prob", 
+    type=float, 
+    default=None,
+    nargs='+', 
+    help="Probability of discrete place cell rfs"
 )
 
 options = parser.parse_args()
@@ -143,7 +145,6 @@ options.decay_step_size = DECAY_STEP_SIZE
 options.decay_rate = DECAY_RATE
 options.lambda_z = LAMBDA_Z
 options.lambda_z_init = LAMBDA_Z_INIT
-options.place_cell_rf = PLACE_CELL_RF
 options.surround_scale = SURROUND_SCALE
 
 if options.mode == "train":
@@ -160,6 +161,7 @@ if options.mode == "train":
 
     # define place cells, trajectory generator, model, and trainer
     place_cell = PlaceCells(options)
+    plot_place_cells(place_cell, options, res=30)
     generator = TrajectoryGenerator(options, place_cell, environment=options.env_shape)
     model = TemporalPCN(options).to(options.device)
     init_model = HierarchicalPCN(options).to(options.device)
@@ -167,7 +169,6 @@ if options.mode == "train":
         options, model, init_model, generator, place_cell, restore=options.restore
     )
     trainer.train(preloaded_data=options.preloaded_data, save=options.save)
-    plot_place_cells(place_cell, options, res=30)
     plot_2d_performance(place_cell, generator, options, trainer)
     res = 30
     rate_map = compute_ratemaps(
