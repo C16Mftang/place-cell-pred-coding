@@ -39,7 +39,7 @@ parser.add_argument(
     "--batch_size", type=int, default=500, help="Batch size for training"
 )
 parser.add_argument(
-    "--n_epochs", type=int, default=150, help="Number of training epochs"
+    "--n_epochs", type=int, default=100, help="Number of training epochs"
 )
 parser.add_argument(
     "--n_steps", type=int, default=100, help="Number of batches"
