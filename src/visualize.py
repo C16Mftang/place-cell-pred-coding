@@ -190,8 +190,8 @@ def find_global_maxima(field):
 
 def find_local_maxima(autocorr):
     peaks = []
-    n = autocorr.shape[0]
-    for i in range(n):
+    m, n = autocorr.shape
+    for i in range(m):
         for j in range(n):
             val = autocorr[i, j]
             # Check all neighbors in an 8-neighborhood
@@ -202,7 +202,7 @@ def find_local_maxima(autocorr):
                     if di == 0 and dj == 0:
                         continue
                     ni, nj = i + di, j + dj
-                    if 0 <= ni < n and 0 <= nj < n:
+                    if 0 <= ni < m and 0 <= nj < n:
                         neighbor_val = autocorr[ni, nj]
                     else:
                         # Treat out-of-bounds as -inf (so edges can still be peaks if appropriate)
@@ -239,7 +239,7 @@ def get_grid_scale(peaks, center_peak, pixel_to_meter, method='nearest'):
     return grid_scale_px, grid_scale_m
 
 def find_central_field_pixels(field, cx, cy, size_thresh_scaler=0.15):
-    n = field.shape[0]
+    m, n = field.shape
     center_peak = (cx, cy)
     peak_val = field[cx, cy]
     threshold = size_thresh_scaler * peak_val
@@ -259,7 +259,7 @@ def find_central_field_pixels(field, cx, cy, size_thresh_scaler=0.15):
                 if dx == 0 and dy == 0:
                     continue
                 nx, ny = x + dx, y + dy
-                if 0 <= nx < n and 0 <= ny < n and not visited[nx, ny]:
+                if 0 <= nx < m and 0 <= ny < n and not visited[nx, ny]:
                     visited[nx, ny] = True
                     stack.append((nx, ny))
     # Ensure the center is included (it should be, given threshold <= peak)
@@ -302,11 +302,11 @@ def compute_grid_metrics(autocorr, env_size=1.6, size_thresh_scaler=0.25, scale_
       'grid_scale_meters': spacing between center and nearest field in meters.
     """
     # Validate input
-    if autocorr.ndim != 2 or autocorr.shape[0] != autocorr.shape[1]:
-        raise ValueError("Autocorrelogram must be a square 2D array")
-    n = autocorr.shape[0]
+    if autocorr.ndim != 2:
+        raise ValueError("Autocorrelogram must be a 2D array")
+    m, n = autocorr.shape
     # Convert grid scale to meters
-    pixel_to_meter = env_size / float(n)   # conversion factor per pixel
+    pixel_to_meter = env_size / float(m)   # conversion factor per pixel
     
     # 1. Find the local maxima
     peaks = find_local_maxima(autocorr)

@@ -230,10 +230,10 @@ else:
 
     # grid scores for half of the fields
     field_height = rate_map_lo_res.shape[-1]
-    _, left_scores, _ = compute_grid_scores(
+    _, left_scores, left_sacs = compute_grid_scores(
         lo_res, rate_map_lo_res[:, :, :field_height // 2], options, half=True
     )
-    _, right_scores, _ = compute_grid_scores(
+    _, right_scores, right_sacs = compute_grid_scores(
         lo_res, rate_map_lo_res[:, :, field_height // 2:], options, half=True
     )
 
@@ -241,6 +241,8 @@ else:
     np.save(os.path.join(save_dir, "grid_scores.npy"), scores)
     np.save(os.path.join(save_dir, "left_grid_scores.npy"), left_scores)
     np.save(os.path.join(save_dir, "right_grid_scores.npy"), right_scores)
+    np.save(os.path.join(save_dir, "left_sac.npy"), left_sacs)
+    np.save(os.path.join(save_dir, "right_sac.npy"), right_sacs)
     # save top 64 grid cells
     np.save(os.path.join(save_dir, "top64_grid_cells.npy"), rate_map[idx[:64]])
 
