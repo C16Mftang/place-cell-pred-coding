@@ -141,6 +141,13 @@ parser.add_argument(
 )
 parser.add_argument("--save_every", type=int, default=2, help="Save model interval")
 parser.add_argument("--sample_size", type=int, default=100000)
+parser.add_argument(
+    "--place_cell_rf_prob", 
+    type=float, 
+    default=None,
+    nargs='+', 
+    help="Probability of discrete place cell rfs"
+)
 options = parser.parse_args()
 
 now = time.strftime("%b-%d-%Y-%H-%M-%S", time.gmtime(time.time()))
