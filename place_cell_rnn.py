@@ -103,7 +103,19 @@ parser.add_argument(
     default='rectangle',
     help="Shape of the simulated environment."
 )
+parser.add_argument("--place_cell_rf", type=float, default=0.12, help='diameter of place fields')
 parser.add_argument("--save_every", type=int, default=50, help="Save model interval")
+parser.add_argument(
+    "--rf_std", type=float, default=0, help="Standard deviation of place cell RFs"
+)
+parser.add_argument(
+    "--place_cell_rf_prob", 
+    type=float, 
+    default=None,
+    nargs='+', 
+    help="Probability of discrete place cell rfs"
+)
+
 options = parser.parse_args()
 options.periodic = PERIODIC
 options.device = DEVICE
@@ -111,7 +123,6 @@ options.oned = ONED
 options.weight_decay = WEIGHT_DECAY
 options.decay_step_size = DECAY_STEP_SIZE
 options.decay_rate = DECAY_RATE
-options.place_cell_rf = PLACE_CELL_RF
 options.surround_scale = SURROUND_SCALE
 
 if options.mode == "train":
@@ -141,6 +152,7 @@ if options.mode == "train":
     )
     plot_2d_ratemaps(rate_map, options, n_col=4)
     plot_loss_err(trainer, options)
+    np.save(os.path.join(options.save_dir, "loss"), trainer.loss)
 
 else:
     now = options.mode
@@ -159,7 +171,6 @@ else:
     # load the model
     ckpt = torch.load(os.path.join(save_dir, "models", "most_recent_model.pth"))
     options.save_dir = save_dir
-    place_cell = PlaceCells(options)
     model = RNN(options, place_cell).to(options.device)
     model.load_state_dict(ckpt)
 
@@ -167,6 +178,7 @@ else:
     Wr = model.RNN.weight_hh_l0.detach().cpu().numpy()
     plot_weights(Wr, options)
 
+    place_cell = PlaceCells(options)
     generator = TrajectoryGenerator(options, place_cell, environment=options.env_shape)
     trainer = Trainer(options, model, generator, place_cell, restore=False)
     print("Generating rate maps...")
