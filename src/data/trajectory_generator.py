@@ -192,7 +192,7 @@ class TrajectoryGenerator(object):
         init_pos = np.stack([traj["init_x"], traj["init_y"]], axis=-1)
         init_pos = torch.tensor(init_pos, dtype=torch.float32)
         init_pos = init_pos.to(self.options.device)
-        init_actv = self.place_cells.get_activation(init_pos).squeeze()
+        init_actv = self.place_cells.get_activation(init_pos).squeeze(1)
 
         v = v.to(self.options.device)
         inputs = (v, init_actv)

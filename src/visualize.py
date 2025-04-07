@@ -503,15 +503,19 @@ def plot_1d_performance(place_cell, generator, options, trainer):
 def plot_2d_performance(place_cell, generator, options, trainer):
 
     inputs, pc_outputs, pos = generator.get_test_batch()
-    pos = pos.cpu()[:5]
+    if options.batch_size < 5:
+        select = options.batch_size
+    else:
+        select = 5
+    pos = pos.cpu()[:select]
     pred_pos = place_cell.get_nearest_cell_pos(
-        trainer.predict(inputs[:5])[0]
-    ).cpu()  # size [5, 20, 2]
+        trainer.predict(inputs)[0][:select]
+    ).cpu()  # size [select, seq_len, 2]
     centers = place_cell.centers.cpu()
 
     plt.figure(figsize=(5, 5))
     plt.scatter(centers[:, 0], centers[:, 1], s=10, c="k")
-    for i in range(5):
+    for i in range(select):
         plt.plot(pos[i, :, 0], pos[i, :, 1], c="r", lw=2, label="true")
         plt.plot(pred_pos[i, :, 0], pred_pos[i, :, 1], c="b", lw=2, label="predicted")
         if i == 0:
