@@ -297,7 +297,7 @@ class MultilayerPCN(nn.Module):
 
         if nonlin == "tanh":
             nonlin = utils.Tanh()
-        elif nonlin == "teLU":
+        elif nonlin == "ReLU":
             nonlin = utils.ReLU()
         elif nonlin == "linear":
             nonlin = utils.Linear()
@@ -306,7 +306,6 @@ class MultilayerPCN(nn.Module):
 
         # initialize nodes
         self.val_nodes = [[] for _ in range(self.n_layers)]
-        # self.preds = [[] for _ in range(self.n_layers)]
         self.errs = [[] for _ in range(self.n_layers)]
 
         # sparse penalty
@@ -356,6 +355,7 @@ class MultilayerPCN(nn.Module):
 
     def inference(self, batch_inp, n_iters, inf_lr):
         self.set_nodes(batch_inp)
+        self.batch_size = batch_inp.shape[0]
         self.inf_losses = []
 
         for itr in range(n_iters):
@@ -371,4 +371,4 @@ class MultilayerPCN(nn.Module):
             total_energy += torch.sum(
                 self.errs[l] ** 2
             )  # average over batch and feature dimensions
-        return total_energy
+        return total_energy * (100 / self.batch_size)

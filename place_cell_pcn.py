@@ -4,6 +4,7 @@ import os
 from matplotlib import pyplot as plt
 import argparse
 import time
+import json
 from tqdm import tqdm
 
 from src.data.place_cells import PlaceCells
@@ -117,7 +118,7 @@ parser.add_argument(
     "--decay_step_size", type=int, default=10, help="Step size for learning rate decay"
 )
 parser.add_argument(
-    "--decay_rate", type=float, default=1.0, help="Decay rate for learning rate"
+    "--decay_rate", type=float, default=0.9, help="Decay rate for learning rate"
 )
 parser.add_argument("--weight_decay", type=float, default=1e-5, help="Weight decay")
 parser.add_argument("--loss", type=str, default="MSE", help="Loss function")
@@ -148,143 +149,180 @@ parser.add_argument(
     nargs='+', 
     help="Probability of discrete place cell rfs"
 )
+parser.add_argument(
+    "--mode",
+    type=str,
+    default="train",
+    help="Mode for running the model; input run folder name for model inspection",
+)
 options = parser.parse_args()
 
-now = time.strftime("%b-%d-%Y-%H-%M-%S", time.gmtime(time.time()))
-options.save_dir = os.path.join("./results/pcn", now)
-if not os.path.exists(options.save_dir):
-    os.makedirs(options.save_dir)
-if not os.path.exists(os.path.join(options.save_dir, "models")):
-    os.makedirs(os.path.join(options.save_dir, "models"))
-print("Saving to:", options.save_dir)
-utils.save_options_to_json(options, os.path.join(options.save_dir, "configs.json"))
+if options.mode == 'train':
+    now = time.strftime("%b-%d-%Y-%H-%M-%S", time.gmtime(time.time()))
+    options.save_dir = os.path.join("./results/pcn", now)
+    if not os.path.exists(options.save_dir):
+        os.makedirs(options.save_dir)
+    if not os.path.exists(os.path.join(options.save_dir, "models")):
+        os.makedirs(os.path.join(options.save_dir, "models"))
+    print("Saving to:", options.save_dir)
+    utils.save_options_to_json(options, os.path.join(options.save_dir, "configs.json"))
 
-place_cells = PlaceCells(options)
-trajectory_generator = TrajectoryGenerator(options, place_cells)
+    place_cells = PlaceCells(options)
+    trajectory_generator = TrajectoryGenerator(options, place_cells)
 
-# Generate 500k random positions that covers the space
-# each position can then be represented as Np-dimensional vector by place cells
-# this provides a 30x30 approximation of the whole environment
-usx = np.random.uniform(
-    -options.box_width / 2, options.box_width / 2, (options.sample_size,)
-)
-usy = np.random.uniform(
-    -options.box_width / 2, options.box_width / 2, (options.sample_size,)
-)
-pos = np.vstack([usx, usy]).T
-pos = pos[:, None, ...]
-pos = torch.tensor(pos).to(device)
+    # Generate 500k random positions that covers the space
+    # each position can then be represented as Np-dimensional vector by place cells
+    # this provides a 30x30 approximation of the whole environment
+    usx = np.random.uniform(
+        -options.box_width / 2, options.box_width / 2, (options.sample_size,)
+    )
+    usy = np.random.uniform(
+        -options.box_width / 2, options.box_width / 2, (options.sample_size,)
+    )
+    pos = np.vstack([usx, usy]).T
+    pos = pos[:, None, ...]
+    pos = torch.tensor(pos).to(device)
 
-# get place cell activations
-pc_outputs = place_cells.get_activation(pos).detach().cpu()
-pc_outputs = pc_outputs.reshape(-1, options.Np)
-pc_outputs = pc_outputs - pc_outputs.mean(dim=0, keepdim=True)
+    # get place cell activations
+    pc_outputs = place_cells.get_activation(pos).detach().cpu()
+    pc_outputs = pc_outputs.reshape(-1, options.Np)
+    pc_outputs = pc_outputs - pc_outputs.mean(dim=0, keepdim=True)
 
-# Train the PCN
-nodes = [options.Ng, options.Np]
-pcn = MultilayerPCN(
-    nodes,
-    options.out_activation,
-    lamb=options.lambda_z_init,
-    use_bias=False,
-    relu_inf=options.relu_inf,
-).to(device)
-X = pc_outputs.to(device)
-optimizer = torch.optim.Adam(
-    pcn.parameters(), lr=options.learning_lr, weight_decay=options.weight_decay
-)
-scheduler = torch.optim.lr_scheduler.StepLR(
-    optimizer, step_size=options.decay_step_size, gamma=options.decay_rate
-)
+    # Train the PCN
+    nodes = [options.Ng, options.Np]
+    pcn = MultilayerPCN(
+        nodes,
+        options.out_activation,
+        lamb=options.lambda_z_init,
+        use_bias=False,
+        relu_inf=options.relu_inf,
+    ).to(device)
+    X = pc_outputs.to(device)
+    optimizer = torch.optim.Adam(
+        pcn.parameters(), lr=options.learning_lr, weight_decay=options.weight_decay
+    )
+    scheduler = torch.optim.lr_scheduler.StepLR(
+        optimizer, step_size=options.decay_step_size, gamma=options.decay_rate
+    )
 
-train_mses = []
-for i in range(options.learning_iters):
-    iter_loss = 0
-    tbar = tqdm(range(0, options.sample_size, options.batch_size))
-    for batch_idx in tbar:
-        data = X[batch_idx : batch_idx + options.batch_size]
-        optimizer.zero_grad()
-        pcn.inference(data, options.inference_iters, options.inference_lr)
-        loss = pcn.get_energy()
-        loss.backward()
-        optimizer.step()
-        iter_loss += loss.item()
+    train_mses = []
+    for i in range(options.learning_iters):
+        iter_loss = 0
+        tbar = tqdm(range(0, options.sample_size, options.batch_size))
+        for batch_idx in tbar:
+            data = X[batch_idx : batch_idx + options.batch_size]
+            optimizer.zero_grad()
+            pcn.inference(data, options.inference_iters, options.inference_lr)
+            loss = pcn.get_energy()
+            loss.backward()
+            optimizer.step()
+            iter_loss += loss.item()
 
-        tbar.set_description(
-            "Epoch: {}/{}. Loss: {}".format(
-                i + 1, options.learning_iters, np.round(loss.item(), 4),
+            tbar.set_description(
+                "Epoch: {}/{}. Loss: {}".format(
+                    i + 1, options.learning_iters, np.round(loss.item(), 8),
+                )
             )
+
+        train_mse = iter_loss / (options.sample_size / options.batch_size)
+        print(train_mse)
+        train_mses.append(train_mse)
+        scheduler.step()
+
+        if (i + 1) % options.save_every == 0:
+            torch.save(
+                pcn.state_dict(),
+                os.path.join(options.save_dir, "models", f"model{i+1}.pth"),
+            )
+
+    # Plot the training loss and save
+    np.save(os.path.join(options.save_dir, "training_loss.npy"), np.array(train_mses))
+    plt.plot(train_mses)
+    plt.xlabel("Epoch")
+    plt.ylabel("Energy")
+    plt.title("Training Loss")
+    plt.savefig(os.path.join(options.save_dir, "training_loss.png"))
+    plt.close()
+
+else:
+    now = options.mode
+    save_dir = os.path.join("./results/pcn", now)
+
+    # load the configuration file to args
+    t_args = argparse.Namespace()
+    d = json.load(open(os.path.join(save_dir, "configs.json")))
+    for k in list(d.keys()):
+        if k == "_get_args" or k == "_get_kwargs":
+            del d[k]
+    t_args.__dict__.update(d)
+    options = parser.parse_args(namespace=t_args)
+    print(options.__dict__)
+
+    place_cells = PlaceCells(options)
+    trajectory_generator = TrajectoryGenerator(options, place_cells)
+
+    # load the model
+    nodes = [options.Ng, options.Np]
+    pcn = MultilayerPCN(
+        nodes,
+        options.out_activation,
+        lamb=options.lambda_z_init,
+        use_bias=False,
+        relu_inf=options.relu_inf,
+    ).to(device)
+
+    ckpt = torch.load(os.path.join(save_dir, "models", f"model{options.learning_iters}.pth"))
+    options.save_dir = save_dir
+    pcn.load_state_dict(ckpt)
+
+    pcn.set_sparsity(0.0)
+    options.sequence_length = 1
+    options.dt = 0.01
+    n_avg = 200
+    g = np.zeros([n_avg, options.batch_size * options.sequence_length, options.Ng])
+    pos = np.zeros([n_avg, options.batch_size * options.sequence_length, 2])
+    activations = np.zeros([options.Ng, options.res, options.res])
+    counts = np.zeros([options.res, options.res])
+    for index in tqdm(range(n_avg)):
+        # pos_batch: [batch_size, sequence_length, 2]
+        _, _, pos_batch = trajectory_generator.get_test_batch()
+
+        pc_outputs_test = place_cells.get_activation(pos_batch).detach()
+        pc_outputs_test = pc_outputs_test.reshape((-1, options.Np))
+        pc_outputs_test = pc_outputs_test - pc_outputs_test.mean(dim=0, keepdim=True)
+        pcn.inference(
+            pc_outputs_test, options.inference_iters_test, options.inference_lr_test
+        )
+        g_batch = pcn.val_nodes[0].clone().detach().cpu().numpy()  # [Ng, res**2]
+        pos_batch = np.reshape(pos_batch.cpu().detach().numpy(), [-1, 2])
+
+        g[index] = g_batch
+        pos[index] = pos_batch
+
+        x_batch = (
+            (pos_batch[:, 0] + options.box_width / 2) / (options.box_width) * options.res
+        )
+        y_batch = (
+            (pos_batch[:, 1] + options.box_height / 2) / (options.box_height) * options.res
         )
 
-    train_mse = iter_loss / (options.sample_size / options.batch_size)
-    train_mses.append(train_mse)
-    scheduler.step()
+        for i in range(options.batch_size * options.sequence_length):
+            x = x_batch[i]
+            y = y_batch[i]
+            if x >= 0 and x < options.res and y >= 0 and y < options.res:
+                counts[int(x), int(y)] += 1
+                activations[:, int(x), int(y)] += g_batch[i, :]
 
-    if (i + 1) % options.save_every == 0:
-        torch.save(
-            pcn.state_dict(),
-            os.path.join(options.save_dir, "models", f"model{i+1}.pth"),
-        )
+    # make it a density map
+    for x in range(options.res):
+        for y in range(options.res):
+            if counts[x, y] > 0:
+                activations[:, x, y] /= counts[x, y]
 
-# Plot the training loss and save
-np.save(os.path.join(options.save_dir, "training_loss.npy"), np.array(train_mses))
-plt.plot(train_mses)
-plt.xlabel("Epoch")
-plt.ylabel("Energy")
-plt.title("Training Loss")
-plt.savefig(os.path.join(options.save_dir, "training_loss.png"))
-plt.close()
+    g = g.reshape([-1, options.Ng])
+    pos = pos.reshape([-1, 2])
 
-pcn.set_sparsity(0.0)
-options.sequence_length = 1
-options.dt = 0.01
-n_avg = 200
-g = np.zeros([n_avg, options.batch_size * options.sequence_length, options.Ng])
-pos = np.zeros([n_avg, options.batch_size * options.sequence_length, 2])
-activations = np.zeros([options.Ng, options.res, options.res])
-counts = np.zeros([options.res, options.res])
-for index in tqdm(range(n_avg)):
-    # pos_batch: [batch_size, sequence_length, 2]
-    _, _, pos_batch = trajectory_generator.get_test_batch()
-
-    pc_outputs_test = place_cells.get_activation(pos_batch).detach()
-    pc_outputs_test = pc_outputs_test.reshape((-1, options.Np))
-    pc_outputs_test = pc_outputs_test - pc_outputs_test.mean(dim=0, keepdim=True)
-    pcn.inference(
-        pc_outputs_test, options.inference_iters_test, options.inference_lr_test
-    )
-    g_batch = pcn.val_nodes[0].clone().detach().cpu().numpy()  # [Ng, res**2]
-    pos_batch = np.reshape(pos_batch.cpu().detach().numpy(), [-1, 2])
-
-    g[index] = g_batch
-    pos[index] = pos_batch
-
-    x_batch = (
-        (pos_batch[:, 0] + options.box_width / 2) / (options.box_width) * options.res
-    )
-    y_batch = (
-        (pos_batch[:, 1] + options.box_height / 2) / (options.box_height) * options.res
-    )
-
-    for i in range(options.batch_size * options.sequence_length):
-        x = x_batch[i]
-        y = y_batch[i]
-        if x >= 0 and x < options.res and y >= 0 and y < options.res:
-            counts[int(x), int(y)] += 1
-            activations[:, int(x), int(y)] += g_batch[i, :]
-
-# make it a density map
-for x in range(options.res):
-    for y in range(options.res):
-        if counts[x, y] > 0:
-            activations[:, x, y] /= counts[x, y]
-
-g = g.reshape([-1, options.Ng])
-pos = pos.reshape([-1, 2])
-
-# # scipy binned_statistic_2d is slightly slower
-# activations = scipy.stats.binned_statistic_2d(pos[:,0], pos[:,1], g.T, bins=res)[0]
-idx, scores, sacs = compute_grid_scores(options.res, activations, options)
-sorted_gcs = activations[idx]
-plot_all_ratemaps(sorted_gcs, scores, options)
+    idx, scores, sacs = compute_grid_scores(options.res, activations, options)
+    sorted_gcs = activations[idx]
+    plot_all_ratemaps(sorted_gcs, scores, options)
 
