@@ -18,7 +18,7 @@ parser = argparse.ArgumentParser(fromfile_prefix_chars="@")
 
 # Training hyperparameters to fully reproduce Sorscher et al. 2023
 parser.add_argument("--Np", type=int, default=512, help="Number of place cells")
-parser.add_argument("--Ng", type=int, default=2048, help="Number of grid cells")
+parser.add_argument("--Ng", type=int, default=1024, help="Number of grid cells")
 parser.add_argument("--Nv", type=int, default=2, help="Number of velocity inputs")
 parser.add_argument(
     "--DoG",
@@ -27,10 +27,10 @@ parser.add_argument(
     help="Whether to use Difference of Gaussians for place cell RFs",
 )
 parser.add_argument(
-    "--box_width", type=float, default=1.4, help="Width of the environment box"
+    "--box_width", type=float, default=1.6, help="Width of the environment box"
 )
 parser.add_argument(
-    "--box_height", type=float, default=1.4, help="Height of the environment box"
+    "--box_height", type=float, default=1.6, help="Height of the environment box"
 )
 parser.add_argument(
     "--sequence_length", type=int, default=10, help="Length of the trajectory sequence"
@@ -40,7 +40,7 @@ parser.add_argument(
     "--batch_size", type=int, default=500, help="Batch size for training"
 )
 parser.add_argument(
-    "--n_epochs", type=int, default=200, help="Number of training epochs"
+    "--n_epochs", type=int, default=100, help="Number of training epochs"
 )
 parser.add_argument(
     "--n_steps", type=int, default=100, help="Number of steps per epoch"
