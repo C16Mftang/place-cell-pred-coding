@@ -163,7 +163,7 @@ def compute_ratemaps(
     return activations
 
 
-def compute_grid_scores(lo_res, rate_map_lo_res, options, half=False):
+def compute_grid_scores(lo_res, rate_map_lo_res, options, half=False, srted=True):
     starts = [0.2] * 10
     ends = np.linspace(0.4, 1.0, num=10)
     box_width = options.box_width
@@ -182,7 +182,11 @@ def compute_grid_scores(lo_res, rate_map_lo_res, options, half=False):
     )
 
     idx = np.flip(np.argsort(score_60))
-    return idx, [score_60[i] for i in idx], [sac[i] for i in idx]
+
+    if srted:
+        return idx, [score_60[i] for i in idx], [sac[i] for i in idx]
+    else:
+        return idx, score_60, sac
 
 def find_global_maxima(field):
     max_index = np.unravel_index(np.argmax(field), field.shape)
