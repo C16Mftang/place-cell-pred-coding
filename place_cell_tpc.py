@@ -72,7 +72,10 @@ parser.add_argument(
     help="Activation function for the recurrent layer",
 )
 parser.add_argument(
-    "--restore", type=str, default=None, help="Timestamp of the saved model to restore"
+    "--restore", 
+    type=str, 
+    default=None, 
+    help="Model path to load the weights from"
 )
 parser.add_argument(
     "--preloaded_data",
@@ -135,6 +138,8 @@ parser.add_argument(
     nargs='+', 
     help="Probability of discrete place cell rfs"
 )
+parser.add_argument("--lambda_z", type=float, default=0, help="Sparsity level for hidden activity")
+parser.add_argument("--lambda_z_init", type=float, default=0, help="Sparsity level for initial hidden activity")
 
 options = parser.parse_args()
 options.periodic = PERIODIC
@@ -143,15 +148,13 @@ options.oned = ONED
 options.weight_decay = WEIGHT_DECAY
 options.decay_step_size = DECAY_STEP_SIZE
 options.decay_rate = DECAY_RATE
-options.lambda_z = LAMBDA_Z
-options.lambda_z_init = LAMBDA_Z_INIT
+# options.lambda_z = LAMBDA_Z
+# options.lambda_z_init = LAMBDA_Z_INIT
 options.surround_scale = SURROUND_SCALE
 
 if options.mode == "train":
     # save directory
     now = time.strftime("%b-%d-%Y-%H-%M-%S", time.gmtime(time.time()))
-    if options.restore is not None:
-        now = options.restore
     options.save_dir = os.path.join("./results/tpc", now)
 
     if options.save and not os.path.exists(options.save_dir):
@@ -166,7 +169,7 @@ if options.mode == "train":
     model = TemporalPCN(options).to(options.device)
     init_model = HierarchicalPCN(options).to(options.device)
     trainer = PCTrainer(
-        options, model, init_model, generator, place_cell, restore=options.restore
+        options, model, init_model, generator, place_cell
     )
     trainer.train(preloaded_data=options.preloaded_data, save=options.save)
     plot_2d_performance(place_cell, generator, options, trainer)
@@ -207,7 +210,7 @@ else:
     place_cell = PlaceCells(options)
     generator = TrajectoryGenerator(options, place_cell, environment=options.env_shape)
     trainer = PCTrainer(
-        options, model, init_model, generator, place_cell, restore=False
+        options, model, init_model, generator, place_cell
     )
     print("Generating rate maps...")
     full_res = 30
@@ -224,6 +227,7 @@ else:
     # scores are already sorted in descending order
     print("Calculating grid scores...")
     idx, scores, sacs = compute_grid_scores(lo_res, rate_map_lo_res, options)  # descending order
+    _, unsrt_scores, _ = compute_grid_scores(lo_res, rate_map_lo_res, options, srted=False)
     # select the top grid cells
     plot_all_ratemaps(rate_map[idx], options, full_res, scores)
     np.save(os.path.join(save_dir, "sac.npy"), sacs)
@@ -239,6 +243,7 @@ else:
 
     # save scores
     np.save(os.path.join(save_dir, "grid_scores.npy"), scores)
+    np.save(os.path.join(save_dir, "unsrt_grid_scores.npy"), unsrt_scores)
     np.save(os.path.join(save_dir, "left_grid_scores.npy"), left_scores)
     np.save(os.path.join(save_dir, "right_grid_scores.npy"), right_scores)
     np.save(os.path.join(save_dir, "left_sac.npy"), left_sacs)
