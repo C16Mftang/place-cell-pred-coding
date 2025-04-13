@@ -160,7 +160,7 @@ class Trainer(object):
         return pred_pos, None
 
 class PCTrainer(object):
-    def __init__(self, options, model, init_model, trajectory_generator, place_cells, restore=True):
+    def __init__(self, options, model, init_model, trajectory_generator, place_cells):
         self.options = options
         self.model = model
         self.init_model = init_model
@@ -172,6 +172,7 @@ class PCTrainer(object):
         self.inf_lr = options.inf_lr
         self.n_epochs = options.n_epochs
         self.n_steps = options.n_steps
+        self.restore = options.restore
 
         self.optimizer = torch.optim.Adam(
             self.model.parameters(), 
@@ -195,12 +196,24 @@ class PCTrainer(object):
         if options.sweep == False:
             self.ckpt_dir = os.path.join(options.save_dir, 'models')
             ckpt_path = os.path.join(self.ckpt_dir, 'most_recent_model.pth')
-            if restore and os.path.isdir(self.ckpt_dir) and os.path.isfile(ckpt_path):
-                self.model.load_state_dict(torch.load(ckpt_path))
-                print("Restored trained model from {}".format(ckpt_path))
+            if not os.path.isdir(self.ckpt_dir):
+                os.makedirs(self.ckpt_dir, exist_ok=True)
+            
+            # when restoring pre-trained models
+            if self.restore is not None:
+                restore_path = os.path.join(
+                    os.path.join("./results/tpc", self.restore),
+                    "models", 
+                    "most_recent_model.pth"
+                )
+                restore_ckpt = torch.load(restore_path)
+                self.model.load_state_dict(restore_ckpt["model"])
+                self.init_model.load_state_dict(restore_ckpt["init_model"])
+                self.init_optimizer.load_state_dict(restore_ckpt['init_optimizer'])
+                self.optimizer.load_state_dict(restore_ckpt['optimizer'])
+                self.scheduler.load_state_dict(restore_ckpt['scheduler'])
+                print(f"Restored trained model from {self.restore}")
             else:
-                if not os.path.isdir(self.ckpt_dir):
-                    os.makedirs(self.ckpt_dir, exist_ok=True)
                 print("Initializing new model from scratch.")
 
     def train_step(self, inputs, pc_outputs, pos):
@@ -345,16 +358,19 @@ class PCTrainer(object):
                     )
                 )
 
-                torch.save(
-                    {
-                        'init_model': self.init_model.state_dict(),
-                        'model': self.model.state_dict(),
-                    }, 
-                    os.path.join(
-                        self.ckpt_dir,
-                        'most_recent_model.pth'
-                    )
-                )
+        torch.save(
+            {
+                'init_model': self.init_model.state_dict(),
+                'model': self.model.state_dict(),
+                'init_optimizer': self.init_optimizer.state_dict(),
+                'optimizer': self.optimizer.state_dict(),
+                'scheduler': self.scheduler.state_dict(),
+            }, 
+            os.path.join(
+                self.ckpt_dir,
+                'most_recent_model.pth'
+            )
+        )
 
         tbar.close()
         if self.options.is_wandb:
