@@ -83,6 +83,12 @@ parser.add_argument(
     help="Whether to use wandb for logging",
 )
 parser.add_argument(
+    "--sweep",
+    type=lambda x: (str(x).lower() == "true"),
+    default=False,
+    help="Hyperparameter tune",
+)
+parser.add_argument(
     "--mode",
     type=str,
     default="train",
