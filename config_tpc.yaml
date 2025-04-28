@@ -1,17 +1,17 @@
 program: place_cell_tpc_sweep.py
-project: place_cell_tpc_sweep
+project: tpc_sweep_abrupt
 name: search_v0
 method: bayes
 
 metric:
   goal: minimize
-  name: err
+  name: loss
 
 parameters:
   learning_rate:
     distribution: log_uniform_values
-    min: 0.00001
-    max: 0.001
+    min: 0.000005
+    max: 0.0001
   inf_lr:
     distribution: log_uniform_values
     min: 0.001
@@ -24,12 +24,14 @@ early_terminate:
 command:
 - python
 - ${program}
-- --device
-- "cuda"
-- --periodic
-- "False"
 - --sequence_length
 - "10"
+- --batch_size
+- "1"
+- --n_steps 
+- "1000"
+- --n_epochs
+- "100"
 - --save
 - "False"
 - --out_activation
@@ -40,3 +42,7 @@ command:
 - "CE"
 - --is_wandb
 - "True"
+- --sweep
+- "True"
+- --inf_iters
+- "5"
