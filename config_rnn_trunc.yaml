@@ -1,0 +1,52 @@
+program: place_cell_rnn_sweep.py
+project: rnn_sweep_abrupt_rnn
+name: search_v0
+method: bayes
+
+metric:
+  goal: minimize
+  name: loss
+
+parameters:
+  learning_rate:
+    distribution: log_uniform_values
+    min: 0.000005
+    max: 0.005
+  truncating:
+    distribution: int_uniform
+    min: 0
+    max: 9
+    
+early_terminate:
+  type: hyperband
+  min_iter: 10
+
+command:
+- python
+- ${program}
+- --sequence_length
+- "10"
+- --batch_size
+- "1"
+- --n_steps 
+- "1000"
+- --n_epochs
+- "100"
+- --decay_step_size
+- "10"
+- --decay_rate
+- "0.8"
+- --weight_decay
+- "0"
+- --save
+- "False"
+- --out_activation
+- "softmax"
+- --rec_activation
+- "relu"
+- --loss
+- "CE"
+- --is_wandb
+- "True"
+- --sweep
+- "True"
