@@ -325,4 +325,5 @@ else:
     sorted_gcs = activations[idx]
     plot_all_ratemaps(sorted_gcs, options, scores=scores)
     np.save(os.path.join(save_dir, "grid_scores.npy"), scores)
+    np.save(os.path.join(save_dir, "grid_maps.npy"), sorted_gcs)
 

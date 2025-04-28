@@ -235,10 +235,10 @@ else:
     # grid scores for half of the fields
     field_height = rate_map_lo_res.shape[-1]
     _, left_scores, left_sacs = compute_grid_scores(
-        lo_res, rate_map_lo_res[:, :, :field_height // 2], options, half=True
+        lo_res, rate_map_lo_res[:, :, :field_height // 2], options, half=True, srted=False
     )
     _, right_scores, right_sacs = compute_grid_scores(
-        lo_res, rate_map_lo_res[:, :, field_height // 2:], options, half=True
+        lo_res, rate_map_lo_res[:, :, field_height // 2:], options, half=True, srted=False
     )
 
     # save scores
@@ -249,8 +249,9 @@ else:
     np.save(os.path.join(save_dir, "left_sac.npy"), left_sacs)
     np.save(os.path.join(save_dir, "right_sac.npy"), right_sacs)
     # save top 64 grid cells
-    # np.save(os.path.join(save_dir, "top64_grid_cells.npy"), rate_map[idx[:64]])
+    np.save(os.path.join(save_dir, "top64_grid_cells.npy"), rate_map[idx[:64]])
     np.save(os.path.join(save_dir, "grid_maps.npy"), rate_map)
+
 
     # border score
     # print("Calculating border scores...")

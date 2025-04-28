@@ -21,3 +21,4 @@ place_cell_tpc_1d.py
 inference_tpc.py
 inference_rnn.py
 inference_pcn.py
+*.bat
