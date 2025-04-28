@@ -121,14 +121,17 @@ parser.add_argument(
     nargs='+', 
     help="Probability of discrete place cell rfs"
 )
+parser.add_argument("--decay_step_size", type=int, default=10)
+parser.add_argument("--decay_rate", type=float, default=1)
+parser.add_argument("--weight_decay", type=float, default=1e-4)
 
 options = parser.parse_args()
 options.periodic = PERIODIC
 options.device = DEVICE
 options.oned = ONED
-options.weight_decay = WEIGHT_DECAY
-options.decay_step_size = DECAY_STEP_SIZE
-options.decay_rate = DECAY_RATE
+# options.weight_decay = WEIGHT_DECAY
+# options.decay_step_size = DECAY_STEP_SIZE
+# options.decay_rate = DECAY_RATE
 options.surround_scale = SURROUND_SCALE
 
 if options.mode == "train":
