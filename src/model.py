@@ -54,9 +54,9 @@ class RNN(torch.nn.Module):
             vs, p0 = inputs
             seq_len = vs.size(1)
             h = self.encoder(p0)[None]
-            for k in range(seq_len):
-                v = vs[:, k : k + 1]  # bsz, 1, 2
-                g, h = self.RNN(v, h)  # g: bsz, 1, Ng
+            for k in range(0, seq_len, self.truncating):
+                v = vs[:, k : min(k + self.truncating, seq_len)]  # bsz, trunc, 2
+                g, h = self.RNN(v, h)  # g: bsz, trunc, Ng; h: bsz, 1, Ng (final hidden state to be used in next iter)
                 h = h.detach()
                 total_g.append(g)
             total_g = torch.cat(total_g, dim=1)
