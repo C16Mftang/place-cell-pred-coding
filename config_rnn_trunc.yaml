@@ -1,5 +1,5 @@
 program: place_cell_rnn_sweep.py
-project: rnn_sweep_abrupt_rnn
+project: tbptt_sweep_abrupt3
 name: search_v0
 method: bayes
 

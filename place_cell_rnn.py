@@ -176,6 +176,8 @@ else:
     t_args.__dict__.update(d)
     options = parser.parse_args(namespace=t_args)
     print(options.__dict__)
+    place_cell = PlaceCells(options)
+    generator = TrajectoryGenerator(options, place_cell, environment=options.env_shape)
 
     # load the model
     ckpt = torch.load(os.path.join(save_dir, "models", "most_recent_model.pth"))
@@ -187,8 +189,6 @@ else:
     Wr = model.RNN.weight_hh_l0.detach().cpu().numpy()
     plot_weights(Wr, options)
 
-    place_cell = PlaceCells(options)
-    generator = TrajectoryGenerator(options, place_cell, environment=options.env_shape)
     trainer = Trainer(options, model, generator, place_cell, restore=False)
     print("Generating rate maps...")
     full_res = 30
