@@ -19,11 +19,12 @@ class PlaceCells(object):
         self.normalize_pc = options.normalize_pc
         self.rf_std = options.rf_std
         self.place_cell_rf_prob = options.place_cell_rf_prob
+        self.place_cell_center_seed = options.place_cell_center_seed
 
         # Randomly tile place cell centers across environment
         # i.e., Np place cells, each with a randomly chosen center
         # never change the seed, it's important for reproducibility
-        np.random.seed(0)
+        np.random.seed(self.place_cell_center_seed)
         usx = np.random.uniform(-self.box_width / 2, self.box_width / 2, (self.Np,))
         usy = np.random.uniform(-self.box_height / 2, self.box_height / 2, (self.Np,))
         self.centers = torch.tensor(np.vstack([usx, usy]).T)
