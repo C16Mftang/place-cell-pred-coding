@@ -123,6 +123,12 @@ parser.add_argument(
     nargs='+', 
     help="Probability of discrete place cell rfs"
 )
+parser.add_argument(
+    "--place_cell_center_seed",
+    type=int,
+    default=0,
+    help="Random seed for place cell center generation",
+)
 parser.add_argument("--decay_step_size", type=int, default=10)
 parser.add_argument("--decay_rate", type=float, default=1)
 parser.add_argument("--weight_decay", type=float, default=1e-4)
