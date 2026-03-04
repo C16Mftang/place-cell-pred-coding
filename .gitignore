@@ -12,9 +12,6 @@
 predictive_coding/
 /legacy
 test.py
-place_cell_tpc_sweep.py
-place_cell_pcn_sweep.py
-place_cell_rnn_sweep.py
 place_cell_tpc_1d.py
 .vscode
 *.egg-info
