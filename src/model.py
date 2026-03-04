@@ -6,6 +6,32 @@ import torch.nn.functional as F
 import src.utils as utils
 from src.constants import ACTIVATION_FUNCS
 
+def _get_weight_init(options):
+    return getattr(options, "weight_init", "default").lower()
+
+def _get_init_gain(options):
+    return float(getattr(options, "init_gain", 1.0))
+
+def _init_linear_weight(weight, init_type, gain):
+    if init_type == "default":
+        return
+    if init_type == "kaiming_uniform":
+        nn.init.kaiming_uniform_(weight, a=0.0, nonlinearity="relu")
+    elif init_type == "kaiming_normal":
+        nn.init.kaiming_normal_(weight, a=0.0, nonlinearity="relu")
+    else:
+        raise ValueError(f"Unknown weight_init: {init_type}")
+
+def _init_rnn_weight(weight, init_type, gain):
+    if init_type == "default":
+        return
+    if init_type == "kaiming_uniform":
+        nn.init.kaiming_uniform_(weight, a=0.0, nonlinearity="relu")
+    elif init_type == "kaiming_normal":
+        nn.init.kaiming_normal_(weight, a=0.0, nonlinearity="relu")
+    else:
+        raise ValueError(f"Unknown weight_init: {init_type}")
+
 class RNN(torch.nn.Module):
     def __init__(self, options, place_cells):
         super(RNN, self).__init__()
@@ -28,11 +54,22 @@ class RNN(torch.nn.Module):
         )
         # Linear read-out weights
         self.decoder = torch.nn.Linear(self.Ng, self.Np, bias=True)
+        self._apply_weight_init(options)
 
         if options.out_activation == "softmax":
             self.out_activation = torch.nn.Softmax(dim=-1)
         elif options.out_activation == "tanh":
             self.out_activation = torch.nn.Tanh()
+
+    def _apply_weight_init(self, options):
+        init_type = _get_weight_init(options)
+        gain = _get_init_gain(options)
+        _init_linear_weight(self.encoder.weight, init_type, gain)
+        _init_rnn_weight(self.RNN.weight_ih_l0, init_type, gain)
+        _init_rnn_weight(self.RNN.weight_hh_l0, init_type, gain)
+        _init_linear_weight(self.decoder.weight, init_type, gain)
+        if self.decoder.bias is not None and init_type != "default":
+            nn.init.zeros_(self.decoder.bias)
 
     def g(self, inputs):
         """
@@ -191,6 +228,7 @@ class TemporalPCN(nn.Module):
         self.Wr = nn.Linear(options.Ng, options.Ng, bias=False)
         self.Win = nn.Linear(options.Nv, options.Ng, bias=False)
         self.Wout = nn.Linear(options.Ng, options.Np, bias=False)
+        self._apply_weight_init(options)
 
         if options.no_velocity:
             self.Win.weight.data.fill_(0)
@@ -202,6 +240,13 @@ class TemporalPCN(nn.Module):
         self.out_activation = ACTIVATION_FUNCS[options.out_activation]
         self.rec_activation = ACTIVATION_FUNCS[options.rec_activation]
         self.loss = options.loss
+
+    def _apply_weight_init(self, options):
+        init_type = _get_weight_init(options)
+        gain = _get_init_gain(options)
+        _init_linear_weight(self.Wr.weight, init_type, gain)
+        _init_linear_weight(self.Win.weight, init_type, gain)
+        _init_linear_weight(self.Wout.weight, init_type, gain)
 
     def set_nodes(self, v, prev_z, p):
         """Set the initial value of the nodes;

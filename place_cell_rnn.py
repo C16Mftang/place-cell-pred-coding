@@ -125,6 +125,18 @@ parser.add_argument("--place_cell_center_seed", type=int, default=0, help="Rando
 parser.add_argument("--decay_step_size", type=int, default=10)
 parser.add_argument("--decay_rate", type=float, default=1)
 parser.add_argument("--weight_decay", type=float, default=1e-4)
+parser.add_argument(
+    "--weight_init",
+    type=str,
+    default="default",
+    help="Weight initialization: default|kaiming_uniform|kaiming_normal",
+)
+parser.add_argument(
+    "--init_gain",
+    type=float,
+    default=1.0,
+    help="Gain/scale parameter used by selected weight initialization",
+)
 
 options = parser.parse_args()
 options.periodic = PERIODIC

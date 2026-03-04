@@ -141,6 +141,18 @@ parser.add_argument(
 parser.add_argument("--place_cell_center_seed", type=int, default=0, help="Random seed for place cell center generation")
 parser.add_argument("--lambda_z", type=float, default=0, help="Sparsity level for hidden activity")
 parser.add_argument("--lambda_z_init", type=float, default=0, help="Sparsity level for initial hidden activity")
+parser.add_argument(
+    "--weight_init",
+    type=str,
+    default="default",
+    help="Weight initialization: default|kaiming_uniform|kaiming_normal",
+)
+parser.add_argument(
+    "--init_gain",
+    type=float,
+    default=1.0,
+    help="Gain/scale parameter used by selected weight initialization",
+)
 
 options = parser.parse_args()
 options.periodic = PERIODIC
