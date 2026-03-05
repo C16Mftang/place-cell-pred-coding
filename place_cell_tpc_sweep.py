@@ -137,6 +137,24 @@ parser.add_argument(
     nargs='+', 
     help="Probability of discrete place cell rfs"
 )
+parser.add_argument(
+    "--place_cell_center_seed",
+    type=int,
+    default=0,
+    help="Random seed for place cell center generation",
+)
+parser.add_argument(
+    "--weight_init",
+    type=str,
+    default="default",
+    help="Weight initialization: default|kaiming_uniform|kaiming_normal",
+)
+parser.add_argument(
+    "--init_gain",
+    type=float,
+    default=1.0,
+    help="Gain/scale parameter used by selected weight initialization",
+)
 
 options = parser.parse_args()
 options.periodic = PERIODIC
@@ -161,7 +179,7 @@ place_cell = PlaceCells(options)
 generator = TrajectoryGenerator(options, place_cell)
 model = TemporalPCN(options).to(options.device)
 init_model = HierarchicalPCN(options).to(options.device)
-trainer = PCTrainer(options, model, init_model, generator, place_cell, restore=options.restore)
+trainer = PCTrainer(options, model, init_model, generator, place_cell)
 
 trainer.train(preloaded_data=options.preloaded_data, save=options.save)
 print(options)

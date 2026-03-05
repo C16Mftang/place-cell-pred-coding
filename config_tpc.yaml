@@ -1,5 +1,5 @@
 program: place_cell_tpc_sweep.py
-project: tpc_sweep_abrupt
+project: tpc_sweep_kaiming_uniform
 name: search_v0
 method: bayes
 
@@ -46,3 +46,5 @@ command:
 - "True"
 - --inf_iters
 - "5"
+- --weight_init
+- "kaiming_normal"
