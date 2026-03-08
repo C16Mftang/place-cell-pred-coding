@@ -12,6 +12,22 @@ def _get_weight_init(options):
 def _get_init_gain(options):
     return float(getattr(options, "init_gain", 1.0))
 
+def _format_inf_lr(inf_lr, feature_dim, device, dtype):
+    if torch.is_tensor(inf_lr):
+        lr = inf_lr.to(device=device, dtype=dtype).flatten()
+    elif isinstance(inf_lr, (list, tuple, np.ndarray)):
+        lr = torch.as_tensor(inf_lr, device=device, dtype=dtype).flatten()
+    else:
+        return inf_lr
+
+    if lr.numel() == 1:
+        return lr.item()
+    if lr.numel() != feature_dim:
+        raise ValueError(
+            f"inf_lr must be scalar or length {feature_dim}, got {lr.numel()}"
+        )
+    return lr.unsqueeze(0)
+
 def _init_linear_weight(weight, init_type, gain):
     if init_type == "default":
         return
@@ -183,6 +199,12 @@ class HierarchicalPCN(nn.Module):
 
     def inference_step(self, inf_lr):
         Wout = self.Wout.weight.clone().detach()
+        inf_lr = _format_inf_lr(
+            inf_lr,
+            feature_dim=self.z.size(-1),
+            device=self.z.device,
+            dtype=self.z.dtype,
+        )
         if isinstance(self.out_activation, utils.Softmax):
             delta = (
                 self.err_z
@@ -281,6 +303,12 @@ class TemporalPCN(nn.Module):
     def inference_step(self, inf_lr, v, prev_z):
         """Take a single inference step"""
         Wout = self.Wout.weight.detach().clone()  # shape [Np, Ng]
+        inf_lr = _format_inf_lr(
+            inf_lr,
+            feature_dim=self.z.size(-1),
+            device=self.z.device,
+            dtype=self.z.dtype,
+        )
         if isinstance(self.out_activation, utils.Softmax):
             delta = (
                 self.err_z

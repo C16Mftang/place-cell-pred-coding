@@ -59,7 +59,13 @@ parser.add_argument(
     help="Number of inference iterations for testing",
 )
 parser.add_argument(
-    "--inf_lr", type=float, default=1e-2, help="Learning rate for inference"
+    "--inf_lr", type=float, default=[1e-2], nargs="+", help="Learning rate for inference"
+)
+parser.add_argument(
+    "--n_module",
+    type=int,
+    default=1,
+    help="Number of modules for block-wise inference LR expansion",
 )
 parser.add_argument(
     "--out_activation",
@@ -156,7 +162,26 @@ parser.add_argument(
     help="Gain/scale parameter used by selected weight initialization",
 )
 
+def expand_inf_lr(inf_lr, n_module, ng):
+    if not isinstance(inf_lr, list):
+        return inf_lr
+    if len(inf_lr) == 1:
+        return inf_lr[0]
+    if len(inf_lr) == ng:
+        return inf_lr
+    if len(inf_lr) == n_module:
+        if ng % n_module != 0:
+            raise ValueError(
+                f"Ng={ng} must be divisible by n_module={n_module} for block-wise inf_lr expansion."
+            )
+        block_size = ng // n_module
+        return np.repeat(np.asarray(inf_lr, dtype=float), block_size).tolist()
+    raise ValueError(
+        f"inf_lr length must be 1, n_module ({n_module}), or Ng ({ng}); got {len(inf_lr)}."
+    )
+
 options = parser.parse_args()
+options.inf_lr = expand_inf_lr(options.inf_lr, options.n_module, options.Ng)
 options.periodic = PERIODIC
 options.device = DEVICE
 options.oned = ONED
@@ -174,6 +199,8 @@ run = wandb.init(config=config)
 
 options.learning_rate = wandb.config.learning_rate
 options.inf_lr = wandb.config.inf_lr
+options.n_module = int(wandb.config.get("n_module", options.n_module))
+options.inf_lr = expand_inf_lr(options.inf_lr, options.n_module, options.Ng)
 
 place_cell = PlaceCells(options)
 generator = TrajectoryGenerator(options, place_cell)
