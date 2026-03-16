@@ -252,20 +252,20 @@ else:
         options, model, init_model, generator, place_cell
     )
     print("Generating rate maps...")
-    full_res = 30
+    full_res = 50
     rate_map = compute_ratemaps(
-        model, trainer, generator, options, res=full_res, n_avg=200, Ng=options.Ng
+        model, trainer, generator, options, res=full_res, n_avg=500, Ng=options.Ng
     )
 
     # calculate grid scores
     print("Generating low resolution rate maps...")
     lo_res = 20
     rate_map_lo_res = compute_ratemaps(
-        model, trainer, generator, options, res=lo_res, n_avg=200, Ng=options.Ng
+        model, trainer, generator, options, res=lo_res, n_avg=500, Ng=options.Ng
     )
     # scores are already sorted in descending order
     print("Calculating grid scores...")
-    idx, scores, sacs = compute_grid_scores(lo_res, rate_map_lo_res, options)  # descending order
+    idx, scores, sacs = compute_grid_scores(full_res, rate_map, options)  # descending order
     _, unsrt_scores, _ = compute_grid_scores(lo_res, rate_map_lo_res, options, srted=False)
     # select the top grid cells
     plot_all_ratemaps(rate_map[idx], options, full_res, scores)
