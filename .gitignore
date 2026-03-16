@@ -21,3 +21,4 @@ inference_pcn.py
 *.bat
 config_rnn2.yaml
 config_rnn3.yaml
+config_tpc2.yaml
