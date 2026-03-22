@@ -107,12 +107,6 @@ def compute_ratemaps(
     g = np.zeros([n_avg, options.batch_size * options.sequence_length, Ng])
     pos = np.zeros([n_avg, options.batch_size * options.sequence_length, 2])
 
-    scaler = options.box_height / options.box_width
-    res_h = int(res * scaler)
-    res_w = int(res)
-    activations = np.zeros([Ng, res_w, res_h])
-    counts = np.zeros([res_w, res_h])
-
     for index in tqdm(range(n_avg)):
         # pos_batch: [batch_size, sequence_length, 2]
         inputs, _, pos_batch = trajectory_generator.get_test_batch()
@@ -127,34 +121,20 @@ def compute_ratemaps(
                 model.g(inputs)[:, :, :Ng].detach().cpu().numpy().reshape(-1, Ng)
             )  # [sequence_length*batch_size, Ng]
 
-        pos_batch = np.reshape(pos_batch.cpu().detach().numpy(), [-1, 2])
+        pos_batch = pos_batch.cpu().detach().numpy().reshape(-1, 2)  # [sequence_length*batch_size, 2]
 
         g[index] = g_batch
         pos[index] = pos_batch
 
-        # Convert position to indices
-        # add h/2 or w/2 is to transform the top-left corner to the center of the box
-        # divide by h or w is to normalize the position to [0, 1] to fit the resolution
-        x_batch = (pos_batch[:, 0] + options.box_width / 2) / (options.box_width) * res_w
-        y_batch = (
-            (pos_batch[:, 1] + options.box_height / 2) / (options.box_height) * res_h
-        )
-
-        for i in range(options.batch_size * options.sequence_length):
-            x = x_batch[i]
-            y = y_batch[i]
-            if x >= 0 and x < res_w and y >= 0 and y < res_h:
-                counts[int(x), int(y)] += 1
-                activations[:, int(x), int(y)] += g_batch[i, :]
-
-    # make it a density map
-    for x in range(res_w):
-        for y in range(res_h):
-            if counts[x, y] > 0:
-                activations[:, x, y] /= counts[x, y]
-
     g = g.reshape([-1, Ng])
     pos = pos.reshape([-1, 2])
+    activations = _compute_ratemaps_from_samples(
+        xs=pos[:, 0],
+        ys=pos[:, 1],
+        g=g,
+        options=options,
+        res=res,
+    )
 
     # # scipy binned_statistic_2d is slightly slower
     # activations = scipy.stats.binned_statistic_2d(pos[:,0], pos[:,1], g.T, bins=res)[0]
@@ -187,6 +167,150 @@ def compute_grid_scores(lo_res, rate_map_lo_res, options, half=False, srted=True
         return idx, [score_60[i] for i in idx], [sac[i] for i in idx]
     else:
         return idx, score_60, sac
+
+
+def _compute_ratemaps_from_samples(xs, ys, g, options, res):
+    """
+    Build occupancy-normalized 2D rate maps from flattened sample arrays.
+
+    Args:
+        xs: np.ndarray [T], x positions in meters.
+        ys: np.ndarray [T], y positions in meters.
+        g: np.ndarray [T, Ng], cell activities.
+        options: run options with box_width/box_height.
+        res: x-axis resolution.
+
+    Returns:
+        np.ndarray [Ng, res_w, res_h] rate maps.
+    """
+    Ng = g.shape[1]
+    scaler = options.box_height / options.box_width
+    res_h = int(res * scaler)
+    res_w = int(res)
+    activations = np.zeros((Ng, res_w, res_h), dtype=float)
+    counts = np.zeros((res_w, res_h), dtype=float)
+
+    x_idx = (xs + options.box_width / 2) / options.box_width * res_w
+    y_idx = (ys + options.box_height / 2) / options.box_height * res_h
+
+    for i in range(xs.shape[0]):
+        x = x_idx[i]
+        y = y_idx[i]
+        if 0 <= x < res_w and 0 <= y < res_h:
+            xi = int(x)
+            yi = int(y)
+            counts[xi, yi] += 1.0
+            activations[:, xi, yi] += g[i, :]
+
+    for x in range(res_w):
+        for y in range(res_h):
+            if counts[x, y] > 0:
+                activations[:, x, y] /= counts[x, y]
+
+    return activations
+
+
+def classify_grid_cells_by_shuffled_null(
+    model,
+    trainer,
+    trajectory_generator,
+    options,
+    lo_res=20,
+    n_avg=None,
+    Ng=512,
+    n_shuffles=100,
+    percentile=95,
+    min_shift_steps=1,
+    seed=0,
+):
+    """
+    Classify grid cells using a shuffled-null threshold on grid scores.
+
+    This follows the same idea as Stensola-style shuffle controls: keep the
+    activity sequence but circularly shift it relative to position samples to
+    destroy spatial alignment.
+
+    Args:
+        model: Model instance (RNN or TemporalPCN).
+        trainer: Corresponding trainer.
+        trajectory_generator: Data generator with get_test_batch().
+        options: Run options namespace.
+        lo_res (int): Ratemap bin resolution on x-axis.
+        n_avg (int | None): Number of batches to aggregate. If None, uses
+            1000 // sequence_length.
+        Ng (int): Number of cells to evaluate (first Ng latent units).
+        n_shuffles (int): Number of circular-shift shuffles.
+        percentile (float): Null percentile used as significance threshold.
+        min_shift_steps (int): Minimum circular shift in sample steps.
+        seed (int): RNG seed.
+
+    Returns:
+        dict with keys:
+            - scores: np.ndarray [Ng], observed grid scores.
+            - threshold: float, global null threshold at `percentile`.
+            - is_grid: np.ndarray [Ng] bool, scores > threshold.
+            - null_scores: np.ndarray [n_shuffles * Ng], shuffled scores.
+            - rate_maps: np.ndarray [Ng, lo_res, lo_res_h], observed ratemaps.
+    """
+    if Ng > options.Ng:
+        Ng = options.Ng
+    if n_avg is None:
+        n_avg = max(1, 1000 // options.sequence_length)
+
+    xs_all = []
+    ys_all = []
+    g_all = []
+
+    for _ in tqdm(range(n_avg)):
+        inputs, _, pos_batch = trajectory_generator.get_test_batch()
+        if isinstance(model, m.TemporalPCN):
+            _, g_batch = trainer.predict(inputs)
+            g_batch = g_batch[:, :, :Ng].detach().cpu().numpy().reshape(-1, Ng)
+        else:
+            g_batch = model.g(inputs)[:, :, :Ng].detach().cpu().numpy().reshape(-1, Ng)
+
+        pos_batch = pos_batch.detach().cpu().numpy().reshape(-1, 2)
+        xs_all.append(pos_batch[:, 0])
+        ys_all.append(pos_batch[:, 1])
+        g_all.append(g_batch)
+
+    xs = np.concatenate(xs_all, axis=0)
+    ys = np.concatenate(ys_all, axis=0)
+    g = np.concatenate(g_all, axis=0)  # [T, Ng]
+    T = g.shape[0]
+    if T < 2:
+        raise ValueError("Not enough samples to perform shuffle test.")
+
+    # Observed scores
+    rate_maps = _compute_ratemaps_from_samples(xs, ys, g, options, lo_res)
+    _, unsrt_scores, _ = compute_grid_scores(lo_res, rate_maps, options, srted=False)
+    scores = np.asarray(unsrt_scores, dtype=float)
+
+    # Shuffled null scores (global across cells, as in pooled-null spirit)
+    rng = np.random.default_rng(seed)
+    max_shift = max(1, T - 1)
+    min_shift = int(max(1, min_shift_steps))
+    if min_shift >= max_shift:
+        min_shift = 1
+    null_scores = []
+    for _ in tqdm(range(int(n_shuffles))):
+        shift = int(rng.integers(min_shift, max_shift + 1))
+        g_shift = np.roll(g, shift=shift, axis=0)
+        rm_shift = _compute_ratemaps_from_samples(xs, ys, g_shift, options, lo_res)
+        _, shuf_scores, _ = compute_grid_scores(lo_res, rm_shift, options, srted=False)
+        null_scores.extend(np.asarray(shuf_scores, dtype=float).tolist())
+
+    null_scores = np.asarray(null_scores, dtype=float)
+    threshold = float(np.percentile(null_scores, percentile))
+    is_grid = scores > threshold
+
+    return {
+        "scores": scores,
+        "threshold": threshold,
+        "is_grid": is_grid,
+        "null_scores": null_scores,
+        "rate_maps": rate_maps,
+    }
 
 def find_global_maxima(field):
     max_index = np.unravel_index(np.argmax(field), field.shape)
@@ -677,6 +801,78 @@ def plot_place_cells(place_cell, options, res, n_show=5):
         axes[i].set_yticks([])
     fig.colorbar(im, ax=axes.ravel().tolist(), orientation="vertical", shrink=0.6)
     plt.savefig(os.path.join(options.save_dir, "place_cell_examples"))
+
+
+def plot_same_cells_across_env(
+    make_opts_fn,
+    get_maps_fn,
+    env_sizes=(0.8, 1.2, 1.6, 2.0),
+    rf=0.12,
+    Np=512,
+    cell_ids=(0, 5, 20, 100),
+    res=120,
+    seed=0,
+):
+    """
+    Plot selected place-cell fields across multiple environment sizes.
+
+    Args:
+        make_opts_fn: Callable(L, Np, rf, seed) -> options namespace
+        get_maps_fn: Callable(options, res) -> (maps, place_cells)
+        env_sizes: Iterable of environment sizes.
+        rf: Place-cell receptive field width.
+        Np: Number of place cells.
+        cell_ids: Sequence of place-cell indices to visualize.
+        res: Spatial grid resolution.
+        seed: Seed forwarded to make_opts_fn.
+    """
+    fig, axes = plt.subplots(
+        len(cell_ids),
+        len(env_sizes),
+        figsize=(3 * len(env_sizes), 2.6 * len(cell_ids)),
+    )
+    if len(cell_ids) == 1:
+        axes = np.expand_dims(axes, 0)
+    if len(env_sizes) == 1:
+        axes = np.expand_dims(axes, 1)
+
+    for c, cell_id in enumerate(cell_ids):
+        for e, L in enumerate(env_sizes):
+            opts = make_opts_fn(L=L, Np=Np, rf=rf, seed=seed)
+            maps, place_cells = get_maps_fn(opts, res=res)
+
+            rm = maps[..., cell_id]
+            rm = (rm - rm.min()) / (rm.max() - rm.min() + 1e-8)
+
+            ax = axes[c, e]
+            ax.imshow(
+                rm,
+                origin="lower",
+                cmap="jet",
+                extent=[-L / 2, L / 2, -L / 2, L / 2],
+                vmin=0,
+                vmax=1,
+            )
+            center_x = place_cells.centers[cell_id, 0].cpu()
+            center_y = place_cells.centers[cell_id, 1].cpu()
+            ax.scatter(
+                center_x,
+                center_y,
+                s=20,
+                c="white",
+                edgecolors="k",
+            )
+
+            if c == 0:
+                ax.set_title(f"L={L} m")
+            if e == 0:
+                ax.set_ylabel(f"Cell {cell_id}")
+            ax.set_xticks([])
+            ax.set_yticks([])
+
+    plt.suptitle(f"Same place-cell RF={rf} across environment sizes", y=1.02)
+    plt.tight_layout()
+    plt.show()
 
 
 def plot_weights(w, options):

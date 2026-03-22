@@ -159,6 +159,24 @@ parser.add_argument(
     default=1.0,
     help="Gain/scale parameter used by selected weight initialization",
 )
+parser.add_argument(
+    "--grid_n_shuffles",
+    type=int,
+    default=100,
+    help="Number of shuffles for grid-cell significance thresholding",
+)
+parser.add_argument(
+    "--grid_percentile",
+    type=float,
+    default=95.0,
+    help="Percentile of shuffled null used as grid-cell threshold",
+)
+parser.add_argument(
+    "--grid_min_shift_steps",
+    type=int,
+    default=1,
+    help="Minimum circular shift (in sample steps) for shuffle null",
+)
 
 def expand_inf_lr(inf_lr, n_module, ng):
     if not isinstance(inf_lr, list):
@@ -251,25 +269,48 @@ else:
     trainer = PCTrainer(
         options, model, init_model, generator, place_cell
     )
-    print("Generating rate maps...")
+    # Calculate grid scores on low-resolution maps (faster, standard for SAC scoring).
+    lo_res = 20
+    print("Generating low-resolution rate maps...")
+    rate_map_lo_res = compute_ratemaps(
+        model, trainer, generator, options, res=lo_res, n_avg=500, Ng=options.Ng
+    )
+
+    print("Calculating grid scores...")
+    _, unsrt_scores, unsrt_sacs = compute_grid_scores(
+        lo_res, rate_map_lo_res, options, srted=False
+    )
+    idx = np.flip(np.argsort(unsrt_scores))
+    scores = [unsrt_scores[i] for i in idx]
+    sacs = [unsrt_sacs[i] for i in idx]
+    np.save(os.path.join(save_dir, "sac.npy"), sacs)
+
+    print("Classifying significant grid cells with shuffled null...")
+    grid_cls = classify_grid_cells_by_shuffled_null(
+        model=model,
+        trainer=trainer,
+        trajectory_generator=generator,
+        options=options,
+        lo_res=lo_res,
+        n_avg=500,
+        Ng=options.Ng,
+        n_shuffles=options.grid_n_shuffles,
+        percentile=options.grid_percentile,
+        min_shift_steps=options.grid_min_shift_steps,
+    )
+    is_grid = grid_cls["is_grid"]
+    grid_threshold = grid_cls["threshold"]
+    print(
+        f"Grid threshold ({options.grid_percentile}th pct): {grid_threshold:.4f}. "
+        f"Detected {is_grid.sum()}/{len(is_grid)} significant grid cells."
+    )
+
+    print("Generating high-resolution rate maps for visualization...")
     full_res = 50
     rate_map = compute_ratemaps(
         model, trainer, generator, options, res=full_res, n_avg=500, Ng=options.Ng
     )
-
-    # calculate grid scores
-    print("Generating low resolution rate maps...")
-    lo_res = 20
-    rate_map_lo_res = compute_ratemaps(
-        model, trainer, generator, options, res=lo_res, n_avg=500, Ng=options.Ng
-    )
-    # scores are already sorted in descending order
-    print("Calculating grid scores...")
-    idx, scores, sacs = compute_grid_scores(full_res, rate_map, options)  # descending order
-    _, unsrt_scores, _ = compute_grid_scores(lo_res, rate_map_lo_res, options, srted=False)
-    # select the top grid cells
     plot_all_ratemaps(rate_map[idx], options, full_res, scores)
-    np.save(os.path.join(save_dir, "sac.npy"), sacs)
 
     # grid scores for half of the fields
     field_height = rate_map_lo_res.shape[-1]
@@ -287,9 +328,10 @@ else:
     np.save(os.path.join(save_dir, "right_grid_scores.npy"), right_scores)
     np.save(os.path.join(save_dir, "left_sac.npy"), left_sacs)
     np.save(os.path.join(save_dir, "right_sac.npy"), right_sacs)
-    # save top 64 grid cells
-    np.save(os.path.join(save_dir, "top64_grid_cells.npy"), rate_map[idx[:64]])
-    np.save(os.path.join(save_dir, "grid_maps.npy"), rate_map)
+    np.save(os.path.join(save_dir, "is_grid.npy"), is_grid)
+    np.save(os.path.join(save_dir, "grid_score_threshold.npy"), np.array([grid_threshold]))
+    # save full map set sorted by descending grid score
+    np.save(os.path.join(save_dir, "grid_maps.npy"), rate_map[idx])
 
 
     # border score
