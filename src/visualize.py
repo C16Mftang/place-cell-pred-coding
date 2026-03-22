@@ -104,10 +104,13 @@ def compute_ratemaps(
         idxs = np.arange(Ng)
     idxs = idxs[:Ng]
 
-    g = np.zeros([n_avg, options.batch_size * options.sequence_length, Ng])
-    pos = np.zeros([n_avg, options.batch_size * options.sequence_length, 2])
+    scaler = options.box_height / options.box_width
+    res_h = int(res * scaler)
+    res_w = int(res)
+    activations = np.zeros((Ng, res_w, res_h), dtype=np.float32)
+    counts = np.zeros((res_w, res_h), dtype=np.float32)
 
-    for index in tqdm(range(n_avg)):
+    for _ in tqdm(range(n_avg)):
         # pos_batch: [batch_size, sequence_length, 2]
         inputs, _, pos_batch = trajectory_generator.get_test_batch()
 
@@ -123,22 +126,20 @@ def compute_ratemaps(
 
         pos_batch = pos_batch.cpu().detach().numpy().reshape(-1, 2)  # [sequence_length*batch_size, 2]
 
-        g[index] = g_batch
-        pos[index] = pos_batch
+        x_idx = (pos_batch[:, 0] + options.box_width / 2) / options.box_width * res_w
+        y_idx = (pos_batch[:, 1] + options.box_height / 2) / options.box_height * res_h
 
-    g = g.reshape([-1, Ng])
-    pos = pos.reshape([-1, 2])
-    activations = _compute_ratemaps_from_samples(
-        xs=pos[:, 0],
-        ys=pos[:, 1],
-        g=g,
-        options=options,
-        res=res,
-    )
+        for i in range(pos_batch.shape[0]):
+            x = x_idx[i]
+            y = y_idx[i]
+            if 0 <= x < res_w and 0 <= y < res_h:
+                xi = int(x)
+                yi = int(y)
+                counts[xi, yi] += 1.0
+                activations[:, xi, yi] += g_batch[i, :]
 
-    # # scipy binned_statistic_2d is slightly slower
-    # activations = scipy.stats.binned_statistic_2d(pos[:,0], pos[:,1], g.T, bins=res)[0]
-    rate_map = activations.reshape(Ng, -1)
+    nonzero = counts > 0
+    activations[:, nonzero] /= counts[nonzero]
 
     return activations
 
@@ -222,6 +223,7 @@ def classify_grid_cells_by_shuffled_null(
     percentile=95,
     min_shift_steps=1,
     seed=0,
+    shuffle_chunk_size=128,
 ):
     """
     Classify grid cells using a shuffled-null threshold on grid scores.
@@ -243,6 +245,8 @@ def classify_grid_cells_by_shuffled_null(
         percentile (float): Null percentile used as significance threshold.
         min_shift_steps (int): Minimum circular shift in sample steps.
         seed (int): RNG seed.
+        shuffle_chunk_size (int): Number of cells processed per chunk during
+            shuffled-null scoring. Lower values reduce peak memory.
 
     Returns:
         dict with keys:
@@ -257,9 +261,12 @@ def classify_grid_cells_by_shuffled_null(
     if n_avg is None:
         n_avg = max(1, 1000 // options.sequence_length)
 
-    xs_all = []
-    ys_all = []
-    g_all = []
+    samples_per_batch = options.batch_size * options.sequence_length
+    T = n_avg * samples_per_batch
+    xs = np.empty(T, dtype=np.float32)
+    ys = np.empty(T, dtype=np.float32)
+    g = np.empty((T, Ng), dtype=np.float32)
+    offset = 0
 
     for _ in tqdm(range(n_avg)):
         inputs, _, pos_batch = trajectory_generator.get_test_batch()
@@ -270,14 +277,18 @@ def classify_grid_cells_by_shuffled_null(
             g_batch = model.g(inputs)[:, :, :Ng].detach().cpu().numpy().reshape(-1, Ng)
 
         pos_batch = pos_batch.detach().cpu().numpy().reshape(-1, 2)
-        xs_all.append(pos_batch[:, 0])
-        ys_all.append(pos_batch[:, 1])
-        g_all.append(g_batch)
+        n = pos_batch.shape[0]
+        xs[offset : offset + n] = pos_batch[:, 0]
+        ys[offset : offset + n] = pos_batch[:, 1]
+        g[offset : offset + n, :] = g_batch.astype(np.float32, copy=False)
+        offset += n
 
-    xs = np.concatenate(xs_all, axis=0)
-    ys = np.concatenate(ys_all, axis=0)
-    g = np.concatenate(g_all, axis=0)  # [T, Ng]
-    T = g.shape[0]
+    if offset != T:
+        xs = xs[:offset]
+        ys = ys[:offset]
+        g = g[:offset, :]
+        T = offset
+
     if T < 2:
         raise ValueError("Not enough samples to perform shuffle test.")
 
@@ -293,12 +304,17 @@ def classify_grid_cells_by_shuffled_null(
     if min_shift >= max_shift:
         min_shift = 1
     null_scores = []
+    chunk = max(1, int(shuffle_chunk_size))
     for _ in tqdm(range(int(n_shuffles))):
         shift = int(rng.integers(min_shift, max_shift + 1))
-        g_shift = np.roll(g, shift=shift, axis=0)
-        rm_shift = _compute_ratemaps_from_samples(xs, ys, g_shift, options, lo_res)
-        _, shuf_scores, _ = compute_grid_scores(lo_res, rm_shift, options, srted=False)
-        null_scores.extend(np.asarray(shuf_scores, dtype=float).tolist())
+        for start in range(0, Ng, chunk):
+            end = min(start + chunk, Ng)
+            g_shift_chunk = np.roll(g[:, start:end], shift=shift, axis=0)
+            rm_shift = _compute_ratemaps_from_samples(
+                xs, ys, g_shift_chunk, options, lo_res
+            )
+            _, shuf_scores, _ = compute_grid_scores(lo_res, rm_shift, options, srted=False)
+            null_scores.extend(np.asarray(shuf_scores, dtype=float).tolist())
 
     null_scores = np.asarray(null_scores, dtype=float)
     threshold = float(np.percentile(null_scores, percentile))
