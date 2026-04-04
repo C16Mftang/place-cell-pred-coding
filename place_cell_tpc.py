@@ -66,6 +66,18 @@ parser.add_argument(
     help="Number of modules for block-wise inference LR expansion",
 )
 parser.add_argument(
+    "--wr_block_diag",
+    type=lambda x: (str(x).lower() == "true"),
+    default=False,
+    help="Apply a block-wise recurrent mask on Wr using n_module blocks.",
+)
+parser.add_argument(
+    "--wr_inter_block_scale",
+    type=float,
+    default=0.0,
+    help="Scale for inter-block recurrent weights when wr_block_diag=True.",
+)
+parser.add_argument(
     "--out_activation",
     type=str,
     default="softmax",

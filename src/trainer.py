@@ -252,6 +252,8 @@ class PCTrainer(object):
             energy, obs_loss = self.model.get_energy()
             energy.backward()
             self.optimizer.step()
+            if hasattr(self.model, "apply_recurrent_mask_"):
+                self.model.apply_recurrent_mask_()
 
             # update the hidden state
             prev_hidden = self.model.z.clone().detach()

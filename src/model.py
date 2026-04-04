@@ -48,6 +48,25 @@ def _init_rnn_weight(weight, init_type, gain):
     else:
         raise ValueError(f"Unknown weight_init: {init_type}")
 
+
+def _build_block_mask(ng, n_module, inter_block_scale, device, dtype):
+    if ng % n_module != 0:
+        raise ValueError(
+            f"Ng={ng} must be divisible by n_module={n_module} for block-wise recurrence."
+        )
+    block = ng // n_module
+    mask = torch.full(
+        (ng, ng),
+        fill_value=float(inter_block_scale),
+        device=device,
+        dtype=dtype,
+    )
+    for i in range(n_module):
+        s = i * block
+        e = s + block
+        mask[s:e, s:e] = 1.0
+    return mask
+
 class RNN(torch.nn.Module):
     def __init__(self, options, place_cells):
         super(RNN, self).__init__()
@@ -247,10 +266,27 @@ class TemporalPCN(nn.Module):
 
     def __init__(self, options):
         super(TemporalPCN, self).__init__()
+        self.Ng = options.Ng
         self.Wr = nn.Linear(options.Ng, options.Ng, bias=False)
         self.Win = nn.Linear(options.Nv, options.Ng, bias=False)
         self.Wout = nn.Linear(options.Ng, options.Np, bias=False)
         self._apply_weight_init(options)
+
+        self.wr_block_diag = bool(getattr(options, "wr_block_diag", False))
+        self.n_module = int(getattr(options, "n_module", 1))
+        self.wr_inter_block_scale = float(getattr(options, "wr_inter_block_scale", 0.0))
+        if self.wr_block_diag and self.n_module > 1:
+            wr_mask = _build_block_mask(
+                ng=self.Ng,
+                n_module=self.n_module,
+                inter_block_scale=self.wr_inter_block_scale,
+                device=self.Wr.weight.device,
+                dtype=self.Wr.weight.dtype,
+            )
+            self.register_buffer("wr_mask", wr_mask)
+            self.apply_recurrent_mask_()
+        else:
+            self.wr_mask = None
 
         if options.no_velocity:
             self.Win.weight.data.fill_(0)
@@ -269,6 +305,17 @@ class TemporalPCN(nn.Module):
         _init_linear_weight(self.Wr.weight, init_type, gain)
         _init_linear_weight(self.Win.weight, init_type, gain)
         _init_linear_weight(self.Wout.weight, init_type, gain)
+
+    def _effective_wr_weight(self):
+        if self.wr_mask is None:
+            return self.Wr.weight
+        return self.Wr.weight * self.wr_mask
+
+    def apply_recurrent_mask_(self):
+        if self.wr_mask is None:
+            return
+        with torch.no_grad():
+            self.Wr.weight.mul_(self.wr_mask)
 
     def set_nodes(self, v, prev_z, p):
         """Set the initial value of the nodes;
@@ -295,7 +342,8 @@ class TemporalPCN(nn.Module):
             self.err_x = self.x / (pred_x + 1e-9) - (1 - self.x) / (1 - pred_x + 1e-9)
 
     def g(self, v, prev_z):
-        return self.rec_activation(self.Wr(prev_z) + self.Win(v))
+        wr_out = F.linear(prev_z, self._effective_wr_weight())
+        return self.rec_activation(wr_out + self.Win(v))
 
     def decode(self, z):
         return self.out_activation(self.Wout(z))
@@ -344,7 +392,8 @@ class TemporalPCN(nn.Module):
             obs_loss = torch.sum(self.err_x**2, -1).mean()
         latent_loss = torch.sum(self.err_z**2, -1).mean()
         energy = obs_loss + latent_loss
-        energy += self.weight_decay * (torch.mean(self.Wr.weight**2))
+        wr_eff = self._effective_wr_weight()
+        energy += self.weight_decay * (torch.mean(wr_eff**2))
 
         return energy, obs_loss
 
