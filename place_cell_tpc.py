@@ -66,6 +66,13 @@ parser.add_argument(
     help="Number of modules for block-wise inference LR expansion",
 )
 parser.add_argument(
+    "--module_fracs",
+    type=float,
+    nargs="+",
+    default=None,
+    help="Optional module size fractions (length n_module), e.g. 0.3 0.7.",
+)
+parser.add_argument(
     "--wr_block_diag",
     type=lambda x: (str(x).lower() == "true"),
     default=False,
@@ -190,7 +197,41 @@ parser.add_argument(
     help="Minimum circular shift (in sample steps) for shuffle null",
 )
 
-def expand_inf_lr(inf_lr, n_module, ng):
+def _module_counts(n_module, ng, module_fracs=None):
+    n_module = int(n_module)
+    ng = int(ng)
+    if n_module < 1:
+        raise ValueError("n_module must be >= 1.")
+    if n_module == 1:
+        return [ng]
+    if module_fracs is None:
+        if ng % n_module != 0:
+            raise ValueError(
+                f"Ng={ng} must be divisible by n_module={n_module} when module_fracs is not set."
+            )
+        return [ng // n_module] * n_module
+
+    fracs = np.asarray(module_fracs, dtype=float).flatten()
+    if fracs.size != n_module:
+        raise ValueError(
+            f"module_fracs length must equal n_module ({n_module}); got {fracs.size}."
+        )
+    if np.any(fracs < 0):
+        raise ValueError("module_fracs must be non-negative.")
+    if float(fracs.sum()) <= 0:
+        raise ValueError("module_fracs must sum to > 0.")
+    fracs = fracs / fracs.sum()
+
+    counts = np.floor(fracs * ng).astype(int)
+    counts[-1] = ng - int(np.sum(counts[:-1]))
+    if np.any(counts <= 0):
+        raise ValueError(
+            f"module_fracs yields empty module(s) for Ng={ng}. Counts: {counts.tolist()}"
+        )
+    return counts.tolist()
+
+
+def expand_inf_lr(inf_lr, n_module, ng, module_fracs=None):
     if not isinstance(inf_lr, list):
         return inf_lr
     if len(inf_lr) == 1:
@@ -198,18 +239,19 @@ def expand_inf_lr(inf_lr, n_module, ng):
     if len(inf_lr) == ng:
         return inf_lr
     if len(inf_lr) == n_module:
-        if ng % n_module != 0:
-            raise ValueError(
-                f"Ng={ng} must be divisible by n_module={n_module} for block-wise inf_lr expansion."
-            )
-        block_size = ng // n_module
-        return np.repeat(np.asarray(inf_lr, dtype=float), block_size).tolist()
+        counts = _module_counts(n_module, ng, module_fracs=module_fracs)
+        return np.repeat(np.asarray(inf_lr, dtype=float), counts).tolist()
     raise ValueError(
         f"inf_lr length must be 1, n_module ({n_module}), or Ng ({ng}); got {len(inf_lr)}."
     )
 
 options = parser.parse_args()
-options.inf_lr = expand_inf_lr(options.inf_lr, options.n_module, options.Ng)
+options.inf_lr = expand_inf_lr(
+    options.inf_lr,
+    options.n_module,
+    options.Ng,
+    module_fracs=options.module_fracs,
+)
 options.periodic = PERIODIC
 options.device = DEVICE
 options.oned = ONED
@@ -261,7 +303,12 @@ else:
             del d[k]
     t_args.__dict__.update(d)
     options = parser.parse_args(namespace=t_args)
-    options.inf_lr = expand_inf_lr(options.inf_lr, options.n_module, options.Ng)
+    options.inf_lr = expand_inf_lr(
+        options.inf_lr,
+        options.n_module,
+        options.Ng,
+        module_fracs=getattr(options, "module_fracs", None),
+    )
     print(options.__dict__)
 
     # load the model
