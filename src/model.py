@@ -49,22 +49,56 @@ def _init_rnn_weight(weight, init_type, gain):
         raise ValueError(f"Unknown weight_init: {init_type}")
 
 
-def _build_block_mask(ng, n_module, inter_block_scale, device, dtype):
-    if ng % n_module != 0:
+def _module_counts(ng, n_module, module_fracs=None):
+    ng = int(ng)
+    n_module = int(n_module)
+    if n_module < 1:
+        raise ValueError("n_module must be >= 1.")
+    if n_module == 1:
+        return [ng]
+    if module_fracs is None:
+        if ng % n_module != 0:
+            raise ValueError(
+                f"Ng={ng} must be divisible by n_module={n_module} when module_fracs is not set."
+            )
+        return [ng // n_module] * n_module
+
+    fracs = np.asarray(module_fracs, dtype=float).flatten()
+    if fracs.size != n_module:
         raise ValueError(
-            f"Ng={ng} must be divisible by n_module={n_module} for block-wise recurrence."
+            f"module_fracs length must equal n_module ({n_module}); got {fracs.size}."
         )
-    block = ng // n_module
+    if np.any(fracs < 0):
+        raise ValueError("module_fracs must be non-negative.")
+    if float(fracs.sum()) <= 0:
+        raise ValueError("module_fracs must sum to > 0.")
+    fracs = fracs / fracs.sum()
+
+    counts = np.floor(fracs * ng).astype(int)
+    counts[-1] = ng - int(np.sum(counts[:-1]))
+    if np.any(counts <= 0):
+        raise ValueError(
+            f"module_fracs yields empty module(s) for Ng={ng}. Counts: {counts.tolist()}"
+        )
+    return counts.tolist()
+
+
+def _build_block_mask(
+    ng, n_module, inter_block_scale, device, dtype, module_fracs=None
+):
     mask = torch.full(
         (ng, ng),
         fill_value=float(inter_block_scale),
         device=device,
         dtype=dtype,
     )
-    for i in range(n_module):
-        s = i * block
-        e = s + block
+    counts = _module_counts(ng=ng, n_module=n_module, module_fracs=module_fracs)
+    start = 0
+    for c in counts:
+        s = start
+        e = s + int(c)
         mask[s:e, s:e] = 1.0
+        start = e
     return mask
 
 class RNN(torch.nn.Module):
@@ -275,6 +309,7 @@ class TemporalPCN(nn.Module):
         self.wr_block_diag = bool(getattr(options, "wr_block_diag", False))
         self.n_module = int(getattr(options, "n_module", 1))
         self.wr_inter_block_scale = float(getattr(options, "wr_inter_block_scale", 0.0))
+        self.module_fracs = getattr(options, "module_fracs", None)
         if self.wr_block_diag and self.n_module > 1:
             wr_mask = _build_block_mask(
                 ng=self.Ng,
@@ -282,6 +317,7 @@ class TemporalPCN(nn.Module):
                 inter_block_scale=self.wr_inter_block_scale,
                 device=self.Wr.weight.device,
                 dtype=self.Wr.weight.dtype,
+                module_fracs=self.module_fracs,
             )
             self.register_buffer("wr_mask", wr_mask)
             self.apply_recurrent_mask_()
