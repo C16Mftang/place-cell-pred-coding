@@ -344,25 +344,27 @@ else:
     sacs = [unsrt_sacs[i] for i in idx]
     np.save(os.path.join(save_dir, "sac.npy"), sacs)
 
-    print("Classifying significant grid cells with shuffled null...")
-    grid_cls = classify_grid_cells_by_shuffled_null(
-        model=model,
-        trainer=trainer,
-        trajectory_generator=generator,
-        options=options,
-        lo_res=lo_res,
-        n_avg=500,
-        Ng=options.Ng,
-        n_shuffles=options.grid_n_shuffles,
-        percentile=options.grid_percentile,
-        min_shift_steps=options.grid_min_shift_steps,
-    )
-    is_grid = grid_cls["is_grid"]
-    grid_threshold = grid_cls["threshold"]
-    print(
-        f"Grid threshold ({options.grid_percentile}th pct): {grid_threshold:.4f}. "
-        f"Detected {is_grid.sum()}/{len(is_grid)} significant grid cells."
-    )
+    # print("Classifying significant grid cells with shuffled null...")
+    # grid_cls = classify_grid_cells_by_shuffled_null(
+    #     model=model,
+    #     trainer=trainer,
+    #     trajectory_generator=generator,
+    #     options=options,
+    #     lo_res=lo_res,
+    #     n_avg=500,
+    #     Ng=options.Ng,
+    #     n_shuffles=options.grid_n_shuffles,
+    #     percentile=options.grid_percentile,
+    #     min_shift_steps=options.grid_min_shift_steps,
+    # )
+    # is_grid = grid_cls["is_grid"]
+    # grid_threshold = grid_cls["threshold"]
+    # print(
+    #     f"Grid threshold ({options.grid_percentile}th pct): {grid_threshold:.4f}. "
+    #     f"Detected {is_grid.sum()}/{len(is_grid)} significant grid cells."
+    # )
+    # np.save(os.path.join(save_dir, "grid_score_threshold.npy"), np.array([grid_threshold]))
+    # np.save(os.path.join(save_dir, "is_grid.npy"), is_grid)
 
     print("Generating high-resolution rate maps for visualization...")
     full_res = 50
@@ -387,8 +389,6 @@ else:
     np.save(os.path.join(save_dir, "right_grid_scores.npy"), right_scores)
     np.save(os.path.join(save_dir, "left_sac.npy"), left_sacs)
     np.save(os.path.join(save_dir, "right_sac.npy"), right_sacs)
-    np.save(os.path.join(save_dir, "is_grid.npy"), is_grid)
-    np.save(os.path.join(save_dir, "grid_score_threshold.npy"), np.array([grid_threshold]))
     # save full map set sorted by descending grid score
     np.save(os.path.join(save_dir, "grid_maps.npy"), rate_map[idx])
 

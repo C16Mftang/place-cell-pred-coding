@@ -215,16 +215,36 @@ else:
     rate_map_lo_res = compute_ratemaps(
         model, trainer, generator, options, res=lo_res, n_avg=200, Ng=options.Ng
     )
-    # scores are already sorted in descending order
     print("Calculating grid scores...")
-    idx, scores, sacs = compute_grid_scores(
-        lo_res, rate_map_lo_res, options
-    )  # descending order
+    _, unsrt_scores, unsrt_sacs = compute_grid_scores(
+        lo_res, rate_map_lo_res, options, srted=False
+    )
+    idx = np.flip(np.argsort(unsrt_scores))
+    scores = [unsrt_scores[i] for i in idx]
+    sacs = [unsrt_sacs[i] for i in idx]
+
     # select the top grid cells
     plot_all_ratemaps(rate_map[idx], options, full_res, scores)
 
-    # save scores
+    # grid scores for half fields (left / right)
+    field_height = rate_map_lo_res.shape[-1]
+    _, left_scores, left_sacs = compute_grid_scores(
+        lo_res, rate_map_lo_res[:, :, : field_height // 2], options, half=True, srted=False
+    )
+    _, right_scores, right_sacs = compute_grid_scores(
+        lo_res, rate_map_lo_res[:, :, field_height // 2 :], options, half=True, srted=False
+    )
+
+    # save core artifacts (TPC-compatible, without shuffled-null threshold files)
+    np.save(os.path.join(save_dir, "sac.npy"), sacs)
     np.save(os.path.join(save_dir, "grid_scores.npy"), scores)
+    np.save(os.path.join(save_dir, "unsrt_grid_scores.npy"), unsrt_scores)
+    np.save(os.path.join(save_dir, "left_grid_scores.npy"), left_scores)
+    np.save(os.path.join(save_dir, "right_grid_scores.npy"), right_scores)
+    np.save(os.path.join(save_dir, "left_sac.npy"), left_sacs)
+    np.save(os.path.join(save_dir, "right_sac.npy"), right_sacs)
+    np.save(os.path.join(save_dir, "grid_maps.npy"), rate_map[idx])
+
     # save top 64 grid cells
     np.save(os.path.join(save_dir, "top64_grid_cells.npy"), rate_map[idx[:64]])
 
