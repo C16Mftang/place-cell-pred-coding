@@ -250,7 +250,7 @@ def discreteness_curve_hist(values, bin_widths):
     return np.asarray(out, dtype=float)
 
 
-def _continuous_null_curve(values, bin_widths, n_shuffle=100, random_state=0):
+def continuous_null_curve(values, bin_widths, n_shuffle=100, random_state=0):
     """
     Generate a jitter-shuffled null baseline for the discreteness curve.
 
@@ -293,7 +293,17 @@ def _continuous_null_curve(values, bin_widths, n_shuffle=100, random_state=0):
     return np.nanmean(curves, axis=0), np.nanstd(curves, axis=0)
 
 
-def estimate_k_from_ksd(log_scales, k_max=6, prominence=0.05, grid_size=512):
+def estimate_k_from_ksd(
+    log_scales,
+    k_max=6,
+    prominence=0.05,
+    grid_size=512,
+    bw_mode="scott",
+    exp_bw_a=0.8,
+    exp_bw_b=0.01,
+    exp_bw_min=0.02,
+    exp_bw_max=1.0,
+):
     """
     Estimate module count ``k`` from KDE peaks on log-scales.
 
@@ -307,6 +317,17 @@ def estimate_k_from_ksd(log_scales, k_max=6, prominence=0.05, grid_size=512):
             dynamic range.
         grid_size (int):
             Number of points in evaluation grid for KDE.
+        bw_mode (str):
+            KDE bandwidth mode: ``"scott"`` (default), ``"silverman"``,
+            or ``"exp"`` for an explicit sample-size exponential schedule.
+        exp_bw_a (float):
+            Exponential bandwidth scale ``a`` used when ``bw_mode="exp"``.
+        exp_bw_b (float):
+            Exponential decay rate ``b`` used when ``bw_mode="exp"``.
+        exp_bw_min (float):
+            Lower clamp for exponential bandwidth factor.
+        exp_bw_max (float):
+            Upper clamp for exponential bandwidth factor.
 
     Returns:
         tuple:
@@ -323,7 +344,19 @@ def estimate_k_from_ksd(log_scales, k_max=6, prominence=0.05, grid_size=512):
     x = x[np.isfinite(x)]
     if x.size < 5:
         return 1, None
-    kde = gaussian_kde(x)
+    n = int(x.size)
+    bw_mode = str(bw_mode).lower()
+    if bw_mode == "scott":
+        kde = gaussian_kde(x, bw_method="scott")
+    elif bw_mode == "silverman":
+        kde = gaussian_kde(x, bw_method="silverman")
+    elif bw_mode == "exp":
+        # Explicit sample-size schedule: bw = a * exp(-b * n), clamped.
+        bw = float(exp_bw_a) * np.exp(-float(exp_bw_b) * float(n))
+        bw = float(np.clip(bw, float(exp_bw_min), float(exp_bw_max)))
+        kde = gaussian_kde(x, bw_method=bw)
+    else:
+        raise ValueError("bw_mode must be one of {'scott', 'silverman', 'exp'}")
     grid = np.linspace(np.min(x), np.max(x), int(grid_size))
     dens = kde(grid)
     prom_abs = float(prominence) * (np.max(dens) - np.min(dens) + 1e-12)
@@ -408,6 +441,11 @@ def module_discreteness_report(
     n_shuffle=100,
     random_state=0,
     orientation_weight=1.0,
+    ksd_bw_mode="scott",
+    ksd_exp_bw_a=0.8,
+    ksd_exp_bw_b=0.01,
+    ksd_exp_bw_min=0.02,
+    ksd_exp_bw_max=1.0,
 ):
     """
     Quantitative discreteness report inspired by Stensola supplementary analyses.
@@ -434,6 +472,17 @@ def module_discreteness_report(
             RNG seed for reproducibility.
         orientation_weight (float):
             Relative weight for orientation features in clustering.
+        ksd_bw_mode (str):
+            Bandwidth mode forwarded to :func:`estimate_k_from_ksd`.
+            One of ``{"scott", "silverman", "exp"}``.
+        ksd_exp_bw_a (float):
+            Exponential bandwidth scale ``a`` when ``ksd_bw_mode="exp"``.
+        ksd_exp_bw_b (float):
+            Exponential bandwidth decay ``b`` when ``ksd_bw_mode="exp"``.
+        ksd_exp_bw_min (float):
+            Lower clamp for exponential bandwidth factor.
+        ksd_exp_bw_max (float):
+            Upper clamp for exponential bandwidth factor.
 
     Returns:
         dict with keys:
@@ -483,12 +532,20 @@ def module_discreteness_report(
     bin_widths = np.asarray(bin_widths, dtype=float)
 
     disc_curve = discreteness_curve_hist(scales, bin_widths)
-    null_mean, null_std = _continuous_null_curve(scales, bin_widths, n_shuffle=n_shuffle, random_state=random_state)
+    null_mean, null_std = continuous_null_curve(scales, bin_widths, n_shuffle=n_shuffle, random_state=random_state)
     disc_ratio_curve = disc_curve / (null_mean + 1e-12)
     disc_ratio_peak = float(np.nanmax(disc_ratio_curve))
 
     log_scales = np.log(scales)
-    k_est, ksd = estimate_k_from_ksd(log_scales, k_max=k_max)
+    k_est, ksd = estimate_k_from_ksd(
+        log_scales,
+        k_max=k_max,
+        bw_mode=ksd_bw_mode,
+        exp_bw_a=ksd_exp_bw_a,
+        exp_bw_b=ksd_exp_bw_b,
+        exp_bw_min=ksd_exp_bw_min,
+        exp_bw_max=ksd_exp_bw_max,
+    )
 
     X = _build_feature_matrix(scales, orientations=orientations, orientation_weight=orientation_weight)
     k = int(np.clip(k_est, 1, min(int(k_max), X.shape[0] - 1)))

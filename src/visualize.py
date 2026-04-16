@@ -329,8 +329,7 @@ def classify_grid_cells_by_shuffled_null(
     }
 
 def find_global_maxima(field):
-    max_index = np.unravel_index(np.argmax(field), field.shape)
-    return max_index
+    return (field.shape[0] // 2, field.shape[1] // 2)
 
 def find_local_maxima(autocorr):
     peaks = []
@@ -366,7 +365,7 @@ def find_local_maxima(autocorr):
         raise RuntimeError("No local maxima found in autocorrelogram.")
     return peaks
 
-def get_grid_scale(peaks, center_peak, pixel_to_meter, method='nearest'):
+def get_grid_scale(peaks, center_peak, method='nearest'):
     nearest_dist = float('inf')
     nearest_peak_coords = None
     cx, cy = center_peak
@@ -379,8 +378,7 @@ def get_grid_scale(peaks, center_peak, pixel_to_meter, method='nearest'):
         dists.append(dist)
     nearest_dists = np.sort(dists)[:6]
     grid_scale_px = np.mean(nearest_dists) if method != 'nearest' else nearest_dists[0]
-    grid_scale_m = grid_scale_px * pixel_to_meter
-    return grid_scale_px, grid_scale_m
+    return grid_scale_px
 
 def find_central_field_pixels(field, cx, cy, size_thresh_scaler=0.15):
     m, n = field.shape

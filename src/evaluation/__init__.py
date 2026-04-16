@@ -6,4 +6,5 @@ from .module_eval import (
     estimate_k_from_ksd,
     module_discreteness_report,
     plot_module_discreteness_report,
+    continuous_null_curve,
 )
