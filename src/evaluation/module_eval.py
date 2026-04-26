@@ -4,6 +4,8 @@ from scipy.stats import gaussian_kde
 from scipy.signal import find_peaks
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
+import os
+import json
 
 
 def extract_sac_fields(sac, corr_thresh=0.1, connectivity=8, min_area=1):
@@ -692,6 +694,283 @@ def plot_module_discreteness_report(report, bins=24, figsize=(15, 4)):
     ax.set_ylabel("Count")
     if len(means) > 0:
         ax.legend(frameon=False, fontsize=8)
+
+    fig.tight_layout()
+    return fig, axes
+
+
+def _module_counts_from_cfg(ng, n_module, module_fracs):
+    """Return per-module counts from config fractions (same logic as notebooks)."""
+    ng = int(ng)
+    n_module = int(n_module)
+    if n_module < 1:
+        raise ValueError("n_module must be >= 1.")
+    if n_module == 1:
+        return [ng]
+
+    if module_fracs is None:
+        if ng % n_module != 0:
+            raise ValueError(
+                f"Ng={ng} not divisible by n_module={n_module} and module_fracs missing."
+            )
+        return [ng // n_module] * n_module
+
+    fr = np.asarray(module_fracs, dtype=float).flatten()
+    if fr.size != n_module:
+        raise ValueError(
+            f"len(module_fracs)={fr.size} does not match n_module={n_module}."
+        )
+    if np.any(fr < 0):
+        raise ValueError("module_fracs must be non-negative.")
+    if np.allclose(fr.sum(), 0):
+        raise ValueError("module_fracs sum must be > 0.")
+
+    fr = fr / fr.sum()
+    counts = np.floor(fr * ng).astype(int)
+    counts[-1] = ng - counts[:-1].sum()
+    return counts.tolist()
+
+
+def module_index_by_sorted_score(run_path, n_cells=None):
+    """
+    Return module index aligned to score-sorted order.
+
+    Args:
+        run_path (str): Path to run directory containing configs/scores.
+        n_cells (int | None): Optional truncation in sorted order.
+
+    Returns:
+        tuple[np.ndarray, dict]:
+          - module_idx_sorted (np.ndarray): shape [Ng] or [n_cells]
+          - cfg (dict): loaded config dict
+    """
+    with open(os.path.join(run_path, "configs.json"), "r") as f:
+        cfg = json.load(f)
+
+    n_module = int(cfg.get("n_module", 1))
+    counts = _module_counts_from_cfg(
+        ng=int(cfg["Ng"]),
+        n_module=n_module,
+        module_fracs=cfg.get("module_fracs", None),
+    )
+
+    unsrt_scores = np.asarray(np.load(os.path.join(run_path, "unsrt_grid_scores.npy"))).reshape(-1)
+    sort_idx = np.argsort(unsrt_scores)[::-1]
+    ng = len(unsrt_scores)
+
+    module_of_orig = np.empty(ng, dtype=int)
+    s = 0
+    for m, c in enumerate(counts):
+        module_of_orig[s:s + c] = m
+        s += c
+    module_idx_sorted = module_of_orig[sort_idx]
+    if n_cells is not None:
+        module_idx_sorted = module_idx_sorted[: int(n_cells)]
+    return module_idx_sorted, cfg
+
+
+def get_grid_scales_cm(
+    dt,
+    model="tpc",
+    n_cells=80,
+    h=None,
+):
+    """
+    Canonical grid-scale extraction (notebook 'me' method).
+
+    This function computes per-cell scale from SAC local maxima and center peak.
+    """
+    # Local import to avoid heavy module coupling unless needed.
+    from src.visualize import find_local_maxima, find_global_maxima, get_grid_scale
+
+    path = f"../results/{model}/{dt}"
+    if h is None:
+        with open(os.path.join(path, "configs.json"), "r") as f:
+            cfg = json.load(f)
+        h = float(cfg.get("box_height", 1.6))
+    sacs = np.load(f"{path}/sac.npy")[:n_cells]  # score-sorted
+    scores = np.load(f"{path}/grid_scores.npy")
+    unsrt_scores = np.load(f"{path}/unsrt_grid_scores.npy")
+
+    scales_px = np.array(
+        [
+            get_grid_scale(
+                find_local_maxima(sac),
+                find_global_maxima(sac),
+                method="average",
+            )
+            for sac in sacs
+        ],
+        dtype=float,
+    )
+
+    rate_map_h = (sacs[0].shape[0] + 1) / 2
+    bin_size_m = h / rate_map_h
+    scales_cm = scales_px * bin_size_m * 100.0
+    return scales_cm, scales_px, scores[: len(sacs)], unsrt_scores, sacs
+
+
+def get_grid_scales_cm_stensola(
+    dt,
+    model="tpc",
+    n_cells=80,
+    corr_thresh=0.2,
+    h=None,
+    connectivity=8,
+    min_area=5,
+):
+    """
+    Stensola-like scale extraction kept as a separate method/cache path.
+    """
+    path = f"../results/{model}/{dt}"
+    if h is None:
+        with open(os.path.join(path, "configs.json"), "r") as f:
+            cfg = json.load(f)
+        h = float(cfg.get("box_height", 1.6))
+    sacs = np.load(f"{path}/sac.npy")  # full stack
+    scores = np.load(f"{path}/grid_scores.npy")
+    unsrt_scores = np.load(f"{path}/unsrt_grid_scores.npy")
+
+    scales_px = top_cells_grid_scales(
+        sacs,
+        scores,
+        n_cells=n_cells,
+        corr_thresh=corr_thresh,
+        connectivity=connectivity,
+        min_area=min_area,
+    )
+
+    rate_map_h = (sacs[0].shape[0] + 1) / 2
+    bin_size_m = h / rate_map_h
+    scales_cm = scales_px * bin_size_m * 100.0
+    return scales_cm, scales_px, scores[: min(int(n_cells), len(scores))], unsrt_scores, sacs[: min(int(n_cells), len(sacs))]
+
+
+def _wrap_deg(x):
+    """Wrap angle in degrees to [-180, 180)."""
+    return (x + 180.0) % 360.0 - 180.0
+
+
+def _label_axes_stensola(center_peak, local_peaks, top_k=6):
+    """Notebook-equivalent Stensola axis labeling from nearest ring peaks."""
+    c = np.asarray(center_peak, dtype=float)
+    ring = [np.asarray(p, dtype=float) for p in local_peaks if not np.array_equal(p, c)]
+    if len(ring) < 3:
+        return None
+
+    ring = sorted(ring, key=lambda p: np.linalg.norm(p - c))[:top_k]
+    vecs = [p - c for p in ring]  # (dr, dc)
+
+    # horizontal reference = 0 deg (to the right); use -dr for math-style y-up
+    ang = np.array([_wrap_deg(np.degrees(np.arctan2(-v[0], v[1]))) for v in vecs], dtype=float)
+
+    i1 = int(np.argmin(np.abs(ang)))  # Axis 1: closest to horizontal
+    a1 = ang[i1]
+    d = np.array([_wrap_deg(a - a1) for a in ang], dtype=float)
+    d[i1] = np.nan
+
+    pos = np.where(d > 0)[0]
+    neg = np.where(d < 0)[0]
+    if len(pos) == 0 or len(neg) == 0:
+        return None
+
+    i2 = int(pos[np.argmin(np.abs(d[pos]))])  # Axis 2: closest positive
+    i3 = int(neg[np.argmin(np.abs(d[neg]))])  # Axis 3: closest negative
+    return ang[i1], ang[i2], ang[i3]
+
+
+def _circular_mean_60(angles_deg):
+    """Notebook-equivalent 60-periodic circular mean."""
+    a = np.asarray(angles_deg, dtype=float)
+    z = np.exp(1j * 2.0 * np.pi * a / 60.0)
+    m = np.mean(z)
+    if np.abs(m) < 1e-10:
+        return np.nan
+    return (np.degrees(np.angle(m)) * 60.0 / 360.0)
+
+
+def get_grid_orientations_deg(dt, model="tpc", n_cells=80, top_k=6):
+    """
+    Stensola-style orientation extraction from SACs.
+
+    Returns orientations and per-cell axis triplets aligned to score-sorted cells.
+    """
+    from src.visualize import find_local_maxima, find_global_maxima
+
+    path = f"../results/{model}/{dt}"
+    sacs = np.load(f"{path}/sac.npy")[:n_cells]  # score-sorted
+    scores = np.load(f"{path}/grid_scores.npy")
+    unsrt_scores = np.load(f"{path}/unsrt_grid_scores.npy")
+
+    orientations_deg = []
+    axes_deg = []
+    for sac in sacs:
+        center = find_global_maxima(sac)
+        peaks = find_local_maxima(sac)
+        ax = _label_axes_stensola(center, peaks, top_k=top_k)
+        if ax is None:
+            orientations_deg.append(np.nan)
+            axes_deg.append((np.nan, np.nan, np.nan))
+            continue
+        a1, a2, a3 = ax
+        orientations_deg.append(_circular_mean_60([a1, a2, a3]))
+        axes_deg.append((a1, a2, a3))
+
+    return (
+        np.asarray(orientations_deg, dtype=float),
+        np.asarray(axes_deg, dtype=float),
+        scores[: len(sacs)],
+        unsrt_scores,
+        sacs,
+    )
+
+
+def summarize_by_module(values, module_idx_sorted):
+    """
+    Compute per-module mean/std/count for a 1D metric aligned to sorted cells.
+    """
+    v = np.asarray(values, dtype=float)
+    m = np.asarray(module_idx_sorted, dtype=int)
+    mask = np.isfinite(v)
+    v = v[mask]
+    m = m[mask]
+    out = {}
+    for mod in sorted(np.unique(m)):
+        g = v[m == mod]
+        out[int(mod)] = {
+            "mean": float(np.mean(g)),
+            "std": float(np.std(g, ddof=1)) if g.size > 1 else np.nan,
+            "n": int(g.size),
+        }
+    return out
+
+
+def plot_sac_examples_with_scale_orientation(
+    sacs,
+    scales_cm,
+    orientations_deg,
+    scores=None,
+    n_examples=6,
+):
+    """
+    Plot SAC examples with scale and orientation annotations.
+    """
+    import matplotlib.pyplot as plt
+
+    n = min(int(n_examples), len(sacs))
+    idx = np.arange(n)
+    fig, axes = plt.subplots(1, n, figsize=(3.2 * n, 3.2), squeeze=False)
+    axes = axes[0]
+
+    for ax, i in zip(axes, idx):
+        sac = sacs[i]
+        ax.imshow(sac, cmap="viridis", interpolation="gaussian")
+        title = f"idx {i}\nscale={scales_cm[i]:.2f} cm\nori={orientations_deg[i]:.2f} deg"
+        if scores is not None and i < len(scores):
+            title += f"\nscore={scores[i]:.3f}"
+        ax.set_title(title, fontsize=9)
+        ax.set_xticks([])
+        ax.set_yticks([])
 
     fig.tight_layout()
     return fig, axes

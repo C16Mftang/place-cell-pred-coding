@@ -7,4 +7,10 @@ from .module_eval import (
     module_discreteness_report,
     plot_module_discreteness_report,
     continuous_null_curve,
+    module_index_by_sorted_score,
+    get_grid_scales_cm,
+    get_grid_scales_cm_stensola,
+    get_grid_orientations_deg,
+    summarize_by_module,
+    plot_sac_examples_with_scale_orientation,
 )
