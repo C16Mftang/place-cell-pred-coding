@@ -81,12 +81,7 @@ class Trainer(object):
             # Construct generator
             gen = self.trajectory_generator.get_generator()
         else:
-            dt = str(self.options.dt).replace('.','')
-            dpath = 'data/trajectory1d' if self.options.oned else 'data/trajectory'
-            path = os.path.join(
-                dpath, 
-                f'{self.options.batch_size*self.options.n_steps}_{self.options.sequence_length}_{self.options.Np}_{dt}.npz'
-            )
+            path = get_traj_data_path(self.options)
             # check if the file exists
             if os.path.exists(path):
                 print(f'Loading pre-generated data at {path}...')
@@ -277,12 +272,7 @@ class PCTrainer(object):
             # Construct generator
             gen = self.trajectory_generator.get_generator()
         else:
-            dt = str(self.options.dt).replace('.','')
-            dpath = 'data/trajectory1d' if self.options.oned else 'data/trajectory'
-            path = os.path.join(
-                dpath, 
-                f'{self.options.batch_size*self.options.n_steps}_{self.options.sequence_length}_{self.options.Np}_{dt}.npz'
-            )
+            path = get_traj_data_path(self.options)
             # check if the file exists
             if os.path.exists(path):
                 print(f'Loading pre-generated data at {path}...')

@@ -10,6 +10,8 @@ class TrajectoryGenerator(object):
         self.options = options
         self.place_cells = place_cells
         self.environment = environment
+        seed = getattr(options, "trajectory_seed", None)
+        self.rng = np.random.default_rng(seed)
 
     def get_hidden_projector(self):
         g_r = torch.Generator()
@@ -68,7 +70,7 @@ class TrajectoryGenerator(object):
         """Generate a random walk in a rectangular box"""
         samples = self.options.sequence_length
         if isinstance(self.options.dt, list):
-            dt = np.random.choice(self.options.dt, size=batch_size)  # time step increment (seconds)
+            dt = self.rng.choice(self.options.dt, size=batch_size)  # time step increment (seconds)
         else:
             dt = self.options.dt  # time step increment (seconds)
         sigma = 5.76 * 2  # stdev rotation velocity (rads/sec)
@@ -79,8 +81,10 @@ class TrajectoryGenerator(object):
         # Initialize variables
         position = np.zeros([batch_size, samples + 2, 2])
         head_dir = np.zeros([batch_size, samples + 2])
-        position[:, 0, 0] = np.random.uniform(-box_width / 2, box_width / 2, batch_size)
-        position[:, 0, 1] = np.random.uniform(
+        position[:, 0, 0] = self.rng.uniform(
+            -box_width / 2, box_width / 2, batch_size
+        )
+        position[:, 0, 1] = self.rng.uniform(
             -box_height / 2, box_height / 2, batch_size
         )
         if self.environment == 'trapezoid':
@@ -94,22 +98,22 @@ class TrajectoryGenerator(object):
                 )
                 if not np.any(out_of_bounds):
                     break
-                position[out_of_bounds, 0, 0] = np.random.uniform(
+                position[out_of_bounds, 0, 0] = self.rng.uniform(
                     -box_width / 2, box_width / 2, np.sum(out_of_bounds)
                 )
-                position[out_of_bounds, 0, 1] = np.random.uniform(
+                position[out_of_bounds, 0, 1] = self.rng.uniform(
                     -box_height / 2, box_height / 2, np.sum(out_of_bounds)
                 )
                 init_x = position[:, 0, 0]
                 init_y = position[:, 0, 1]
 
-        head_dir[:, 0] = np.random.uniform(0, 2 * np.pi, batch_size)
+        head_dir[:, 0] = self.rng.uniform(0, 2 * np.pi, batch_size)
         velocity = np.zeros([batch_size, samples + 2])
 
         # Generate sequence of random boosts and turns
-        random_turn = np.random.normal(mu, sigma, [batch_size, samples + 1])
-        random_vel = np.random.rayleigh(b, [batch_size, samples + 1])
-        v = np.abs(np.random.normal(0, b * np.pi / 2, batch_size))
+        random_turn = self.rng.normal(mu, sigma, [batch_size, samples + 1])
+        random_vel = self.rng.rayleigh(b, [batch_size, samples + 1])
+        v = np.abs(self.rng.normal(0, b * np.pi / 2, batch_size))
 
         for t in range(samples + 1):
             # Update velocity
@@ -215,6 +219,8 @@ class TrajectoryGenerator1D(object):
     def __init__(self, options, place_cell):
         self.options = options
         self.place_cell = place_cell
+        seed = getattr(options, "trajectory_seed", None)
+        self.rng = np.random.default_rng(seed)
 
     def avoid_wall(self, position):
         """
@@ -249,8 +255,6 @@ class TrajectoryGenerator1D(object):
         Outputs:
             traj: (batch_size, sequence_length) tensor of the generated trajectories
         """
-        if seed:
-            torch.manual_seed(seed)
         track_length = self.place_cell.track_length
         batch_size = self.options.batch_size
         sequence_length = self.options.sequence_length
@@ -260,10 +264,12 @@ class TrajectoryGenerator1D(object):
         position = torch.zeros(batch_size, sequence_length + 2)
 
         # random initial position; between -track_length/2 and track_length/2
-        position[:, 0] = torch.rand(batch_size) * track_length - track_length / 2
+        init_pos = self.rng.uniform(-track_length / 2, track_length / 2, size=batch_size)
+        position[:, 0] = torch.tensor(init_pos, dtype=torch.float32)
 
         # IMPORTANT: For nonperiodic boundary, using a positive velocity will like to result in bouncing back and forth near a wall
-        velocity = torch.rand((batch_size, sequence_length + 1)) * 2 - 1
+        velocity_np = self.rng.uniform(-1.0, 1.0, size=(batch_size, sequence_length + 1))
+        velocity = torch.tensor(velocity_np, dtype=torch.float32)
 
         for t in range(sequence_length + 1):
             v = velocity[:, t]

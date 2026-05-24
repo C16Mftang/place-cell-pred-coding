@@ -6,9 +6,25 @@ import os
 from .trajectory_generator import TrajectoryGenerator, TrajectoryGenerator1D
 from .place_cells import PlaceCells, PlaceCells1D
 
+def get_traj_data_path(options):
+    dt = str(options.dt).replace('.', '')
+    dpath = 'data/trajectory1d' if options.oned else 'data/trajectory'
+    seed = getattr(options, "trajectory_seed", None)
+    seed_tag = "rand" if seed is None else f"seed{seed}"
+    env_tag = "1d" if options.oned else getattr(options, "env_shape", "rectangle")
+    n_traj = options.batch_size * options.n_steps
+    return os.path.join(
+        dpath,
+        (
+            f"{n_traj}_{options.sequence_length}_{options.Np}_{dt}_"
+            f"{env_tag}_{seed_tag}.npz"
+        ),
+    )
+
 def generate_traj_data(options):
     # generate a batch of full size data and save it to a .npz file
     # convert the batch size, which is the input to the generator, to the full size
+    path = get_traj_data_path(options)
     bsz = options.batch_size
     options.batch_size = bsz * options.n_steps
     if options.oned:
@@ -23,22 +39,25 @@ def generate_traj_data(options):
 
     v = inputs[0]
     init_actv = inputs[1]
+    init_pos = trajectory_generator.place_cells.get_nearest_cell_pos(
+        init_actv.unsqueeze(1)
+    ).squeeze(1)
 
-    dt = str(options.dt).replace('.','')
-    dpath = 'data/trajectory1d' if options.oned else 'data/trajectory'
+    dpath = os.path.dirname(path)
     if not os.path.exists(dpath):
         os.makedirs(dpath)
         
     np.savez(
-        os.path.join(dpath, f'{options.batch_size}_{options.sequence_length}_{options.Np}_{dt}.npz'),
+        path,
         v=v.cpu().numpy(),
         init_actv=init_actv.cpu().numpy(),
+        init_pos=init_pos.cpu().numpy(),
         pc_outputs=pc_outputs.cpu().numpy(),
         pos=pos.cpu().numpy(),
         centers=place_cells.centers.cpu().numpy()
     )
 
-    print(f'Generated {options.batch_size} trajectories. Sizes:') 
+    print(f'Generated {options.batch_size} trajectories at {path}. Sizes:')
     print(f'velocity: {v.shape}')
     print(f'initial activation: {init_actv.shape}')
     print(f'place cell outputs: {pc_outputs.shape}')
@@ -56,6 +75,7 @@ class Trjectory(torch.utils.data.Dataset):
         # need to match the names used when the .npz file was created.
         self.v = self.data['v']  # Shape: [batch_size, sequence_length, 1]
         self.init_actv = self.data['init_actv']  # Shape: [batch_size, Np]
+        self.init_pos = self.data['init_pos'] if 'init_pos' in self.data.files else None
         self.pc_outputs = self.data['pc_outputs']  # Shape: [batch_size, sequence_length, Np]
         self.pos = self.data['pos']  # Shape: [batch_size, sequence_length, 1]
 
