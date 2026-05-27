@@ -20,6 +20,68 @@ class TrajectoryGenerator(object):
             self.options.device
         )
 
+    def _trapezoid_top_width(self, box_width):
+        top_width = getattr(self.options, "trapezoid_top_width", None)
+        if top_width is None:
+            return box_width / 4
+        return float(top_width)
+
+    def _trapezoid_vertices(self, box_width, box_height):
+        """Return CCW vertices for the current trapezoid/triangle."""
+        top_width = self._trapezoid_top_width(box_width)
+        if top_width < 0:
+            raise ValueError("trapezoid_top_width must be non-negative.")
+        if top_width > box_width:
+            raise ValueError("trapezoid_top_width cannot exceed box_width.")
+
+        bottom_left = [-box_width / 2, -box_height / 2]
+        bottom_right = [box_width / 2, -box_height / 2]
+        if np.isclose(top_width, 0.0):
+            return np.array(
+                [bottom_left, bottom_right, [0.0, box_height / 2]], dtype=float
+            )
+        return np.array(
+            [
+                bottom_left,
+                bottom_right,
+                [top_width / 2, box_height / 2],
+                [-top_width / 2, box_height / 2],
+            ],
+            dtype=float,
+        )
+
+    def _inside_polygon(self, points, vertices):
+        """Check whether points are inside a convex CCW polygon."""
+        points = np.asarray(points, dtype=float)
+        inside = np.ones(points.shape[0], dtype=bool)
+        for i in range(len(vertices)):
+            p0 = vertices[i]
+            p1 = vertices[(i + 1) % len(vertices)]
+            edge = p1 - p0
+            rel = points - p0
+            signed = edge[0] * rel[:, 1] - edge[1] * rel[:, 0]
+            inside &= signed >= -1e-12
+        return inside
+
+    def _polygon_wall_distances_and_angles(self, points, vertices):
+        """Signed distances to each polygon edge and outward-normal angles."""
+        dists = []
+        angles = []
+        for i in range(len(vertices)):
+            p0 = vertices[i]
+            p1 = vertices[(i + 1) % len(vertices)]
+            edge = p1 - p0
+            norm = np.linalg.norm(edge)
+            if norm <= 1e-12:
+                continue
+            rel = points - p0
+            signed = (edge[0] * rel[:, 1] - edge[1] * rel[:, 0]) / norm
+            # Vertices are CCW, so the outward normal is to the right of the edge.
+            outward = np.array([edge[1], -edge[0]]) / norm
+            dists.append(signed)
+            angles.append(np.arctan2(outward[1], outward[0]))
+        return np.asarray(dists), np.asarray(angles)
+
     def avoid_wall(self, position, hd, box_width, box_height):
         """
         Compute distance and angle to nearest wall in a specified environment
@@ -36,13 +98,8 @@ class TrajectoryGenerator(object):
                 box_height / 2 + y,
             ]
         elif self.environment == 'trapezoid':
-            # Trapezoid environment
-            dists = [
-                5 * box_width / 16 - x - 3 * y * box_width / (8 * box_height),  # Right edge
-                box_height / 2 - y,  # Top edge
-                5 * box_width / 16 + x - 3 * y * box_width / (8 * box_height),  # Left edge
-                box_height / 2 + y  # Bottom edge
-            ]
+            vertices = self._trapezoid_vertices(box_width, box_height)
+            dists, angles = self._polygon_wall_distances_and_angles(position, vertices)
         else:
             raise ValueError(
                 "Unsupported environment type. Choose 'rectangle' or 'trapezoid'."
@@ -51,8 +108,6 @@ class TrajectoryGenerator(object):
         d_wall = np.min(dists, axis=0)
         if self.environment == 'rectangle':
             angles = np.array([0, np.pi / 2, np.pi, 3 * np.pi / 2])
-        elif self.environment == 'trapezoid':
-            angles = np.array([0, np.pi / 2, np.pi, 3 * np.pi / 2])  # Adjust as needed for trapezoid
         theta = angles[np.argmin(dists, axis=0)]
         hd = np.mod(hd, 2 * np.pi)
         a_wall = hd - theta
@@ -88,14 +143,10 @@ class TrajectoryGenerator(object):
             -box_height / 2, box_height / 2, batch_size
         )
         if self.environment == 'trapezoid':
-            init_x = position[:, 0, 0]
-            init_y = position[:, 0, 1]
+            vertices = self._trapezoid_vertices(box_width, box_height)
             # Check if initial position is within trapezoid
             while True:
-                out_of_bounds = np.logical_or(
-                    -8 * box_height * init_x / (3 * box_width) + 5 * box_height / 6 < init_y,
-                    8 * box_height * init_x / (3 * box_width) + 5 * box_height / 6 < init_y,
-                )
+                out_of_bounds = ~self._inside_polygon(position[:, 0], vertices)
                 if not np.any(out_of_bounds):
                     break
                 position[out_of_bounds, 0, 0] = self.rng.uniform(
@@ -104,8 +155,6 @@ class TrajectoryGenerator(object):
                 position[out_of_bounds, 0, 1] = self.rng.uniform(
                     -box_height / 2, box_height / 2, np.sum(out_of_bounds)
                 )
-                init_x = position[:, 0, 0]
-                init_y = position[:, 0, 1]
 
         head_dir[:, 0] = self.rng.uniform(0, 2 * np.pi, batch_size)
         velocity = np.zeros([batch_size, samples + 2])

@@ -12,6 +12,10 @@ def get_traj_data_path(options):
     seed = getattr(options, "trajectory_seed", None)
     seed_tag = "rand" if seed is None else f"seed{seed}"
     env_tag = "1d" if options.oned else getattr(options, "env_shape", "rectangle")
+    if env_tag == "trapezoid":
+        top_width = getattr(options, "trapezoid_top_width", None)
+        top_tag = "default" if top_width is None else str(top_width).replace(".", "")
+        env_tag = f"{env_tag}_top{top_tag}"
     n_traj = options.batch_size * options.n_steps
     return os.path.join(
         dpath,
@@ -104,4 +108,3 @@ def get_traj_loader(path, options):
     loader = torch.utils.data.DataLoader(dataset, batch_size=options.batch_size, shuffle=True)
 
     return loader
-

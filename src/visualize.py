@@ -697,16 +697,39 @@ def plot_1d_ratemaps(rate_map, options):
     plt.savefig(os.path.join(options.save_dir, "1d_ratemaps.png"))
 
 
-def trapezoid_mask(h, w, res_h, res_w):
-    # Define the trapezoid (vertices in (x, y) format)
-    trapezoid_vertices = np.array([[-h/2, -w/2], [h/2, -w/8], [h/2, w/8], [-h/2, w/2]])
+def trapezoid_vertices(width, height, top_width=None):
+    """Return vertices for a symmetric trapezoid, or triangle if top_width=0."""
+    if top_width is None:
+        top_width = width / 4
+    top_width = float(top_width)
+    if top_width < 0:
+        raise ValueError("trapezoid_top_width must be non-negative.")
+    if top_width > width:
+        raise ValueError("trapezoid_top_width cannot exceed box_width.")
 
-    # Create a mask for the trapezoid
-    x_indices, y_indices = np.meshgrid(np.linspace(-h/2, h/2, res_h), np.linspace(-w/2, w/2, res_w))  # Pixel coordinates
-    points = np.vstack((x_indices.ravel(), y_indices.ravel())).T  # Convert to (N, 2) array
+    bottom_left = [-width / 2, -height / 2]
+    bottom_right = [width / 2, -height / 2]
+    if np.isclose(top_width, 0.0):
+        return np.array([bottom_left, bottom_right, [0.0, height / 2]], dtype=float)
+    return np.array(
+        [
+            bottom_left,
+            bottom_right,
+            [top_width / 2, height / 2],
+            [-top_width / 2, height / 2],
+        ],
+        dtype=float,
+    )
 
-    # Check if each pixel is inside the trapezoid
-    trapezoid_path = Path(trapezoid_vertices)
+
+def trapezoid_mask(width, height, res_w, res_h, top_width=None):
+    trapezoid_path = Path(trapezoid_vertices(width, height, top_width=top_width))
+    x_indices, y_indices = np.meshgrid(
+        np.linspace(-width / 2, width / 2, res_w),
+        np.linspace(-height / 2, height / 2, res_h),
+        indexing="ij",
+    )
+    points = np.vstack((x_indices.ravel(), y_indices.ravel())).T
     mask = trapezoid_path.contains_points(points).reshape(res_w, res_h)
     return mask
 
@@ -717,6 +740,7 @@ def plot_2d_ratemaps(rate_map, options, n_col=4, res=30):
     h = options.box_height
     res_w = int(res)
     res_h = int(res * h / w)
+    top_width = getattr(options, "trapezoid_top_width", None)
 
     fig, ax = plt.subplots(n_col, Ng // n_col, figsize=(Ng // n_col, n_col))
     for i, ax in enumerate(ax.flatten()):
@@ -724,8 +748,8 @@ def plot_2d_ratemaps(rate_map, options, n_col=4, res=30):
             rate_map[i].max() - rate_map[i].min() + 1e-8
         )
         if options.env_shape == "trapezoid":
-            r[~trapezoid_mask(h, w, res_h, res_w)] = np.nan
-        ax.imshow(r, cmap="jet", extent=[-h/2, h/2, -w/2, w/2], origin='lower')
+            r[~trapezoid_mask(w, h, res_w, res_h, top_width=top_width)] = np.nan
+        ax.imshow(r.T, cmap="jet", extent=[-w/2, w/2, -h/2, h/2], origin='lower')
         ax.set_xticks([])
         ax.set_yticks([])
         # ax.set_title(f'Grid Cell {i+1}')
@@ -746,6 +770,7 @@ def plot_all_ratemaps(rate_map, options, res=30, scores=None, dir="all_maps"):
     h = options.box_height
     res_w = int(res)
     res_h = int(res * h / w)
+    top_width = getattr(options, "trapezoid_top_width", None)
 
     for i in tqdm(range(n_files)):
         rm = rate_map[
@@ -757,8 +782,8 @@ def plot_all_ratemaps(rate_map, options, res=30, scores=None, dir="all_maps"):
         for j, ax in enumerate(axes.flatten()):
             r = (rm[j] - rm[j].min()) / (rm[j].max() - rm[j].min() + 1e-8)
             if options.env_shape == "trapezoid":
-                r[~trapezoid_mask(h, w, res_h, res_w)] = np.nan
-            ax.imshow(r, cmap="jet", extent=[-h/2, h/2, -w/2, w/2], origin='lower')
+                r[~trapezoid_mask(w, h, res_w, res_h, top_width=top_width)] = np.nan
+            ax.imshow(r.T, cmap="jet", extent=[-w/2, w/2, -h/2, h/2], origin='lower')
             ax.set_xticks([])
             ax.set_yticks([])
             if scores:

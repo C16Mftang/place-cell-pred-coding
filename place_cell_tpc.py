@@ -151,6 +151,15 @@ parser.add_argument(
     default='rectangle',
     help="Shape of the simulated environment."
 )
+parser.add_argument(
+    "--trapezoid_top_width",
+    type=float,
+    default=None,
+    help=(
+        "Top edge width for trapezoid environments. "
+        "Defaults to box_width / 4 to preserve the original trapezoid; use 0 for a triangle."
+    ),
+)
 parser.add_argument("--save_every", type=int, default=50, help="Save model interval")
 parser.add_argument("--place_cell_rf", type=float, default=0.12, help='diameter of place fields')
 parser.add_argument(
