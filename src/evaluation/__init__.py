@@ -13,4 +13,5 @@ from .module_eval import (
     get_grid_orientations_deg,
     summarize_by_module,
     plot_sac_examples_with_scale_orientation,
+    plot_grid_map_examples_with_scale_orientation,
 )

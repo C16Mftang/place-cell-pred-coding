@@ -274,7 +274,6 @@ def border_score(rm, res, box_width):
     # Max coverage of any one field over any one border
     cm_max = 0
     for mask in masks:
-        mask = masks[0]
         n_cov = mask[0].mean()
         s_cov = mask[-1].mean()
         e_cov = mask[:, 0].mean()

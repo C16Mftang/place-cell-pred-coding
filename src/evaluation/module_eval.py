@@ -945,27 +945,151 @@ def summarize_by_module(values, module_idx_sorted):
     return out
 
 
+def _select_cells_by_scale(scales_cm, n_examples=6, selection="first"):
+    """
+    Return cell indices selected from scale values.
+
+    selection:
+      - "first": first n cells in current order
+      - "largest" / "highest": n cells with largest finite scales
+      - "smallest" / "lowest": n cells with smallest finite scales
+    """
+    scales = np.asarray(scales_cm, dtype=float)
+    n = min(int(n_examples), len(scales))
+    selection = str(selection).lower()
+    if selection == "first":
+        return np.arange(n)
+
+    valid = np.where(np.isfinite(scales) & (scales > 0))[0]
+    if selection in ("largest", "highest", "max"):
+        order = valid[np.argsort(scales[valid])[::-1]]
+    elif selection in ("smallest", "lowest", "min"):
+        order = valid[np.argsort(scales[valid])]
+    else:
+        raise ValueError(
+            "selection must be one of {'first', 'largest', 'highest', 'smallest', 'lowest'}"
+        )
+    return order[:n]
+
+
+def _nearest_ring_peaks(center_peak, local_peaks, n_peaks=6):
+    """Return nearest local peaks excluding the central SAC peak."""
+    c = np.asarray(center_peak, dtype=float)
+    ring = [
+        np.asarray(p, dtype=float)
+        for p in local_peaks
+        if not np.array_equal(np.asarray(p), c)
+    ]
+    ring = sorted(ring, key=lambda p: np.linalg.norm(p - c))
+    return ring[: int(n_peaks)]
+
+
 def plot_sac_examples_with_scale_orientation(
     sacs,
     scales_cm,
     orientations_deg,
     scores=None,
     n_examples=6,
+    selection="first",
+    indices=None,
+    draw_peak_connections=False,
+    n_peaks=6,
+    cmap="viridis",
+    connection_color="white",
 ):
     """
     Plot SAC examples with scale and orientation annotations.
+
+    Args:
+        sacs: SAC stack aligned to ``scales_cm``.
+        scales_cm: Per-cell grid scales.
+        orientations_deg: Per-cell orientations.
+        scores: Optional per-cell grid scores.
+        n_examples: Number of cells to plot.
+        selection: "first", "largest"/"highest", or "smallest"/"lowest".
+        indices: Optional explicit cell indices to plot. Takes precedence over
+            ``selection`` and ``n_examples``.
+        draw_peak_connections: If True, draw lines from SAC center to the
+            nearest ring peaks.
+        n_peaks: Number of ring peaks to connect when drawing overlays.
+        cmap: Matplotlib colormap for SACs.
+        connection_color: Color for center/peak connection overlays.
     """
     import matplotlib.pyplot as plt
+    from src.visualize import find_global_maxima, find_local_maxima
 
-    n = min(int(n_examples), len(sacs))
-    idx = np.arange(n)
+    if indices is None:
+        idx = _select_cells_by_scale(scales_cm, n_examples=n_examples, selection=selection)
+    else:
+        idx = np.asarray(indices, dtype=int)
+    n = len(idx)
     fig, axes = plt.subplots(1, n, figsize=(3.2 * n, 3.2), squeeze=False)
     axes = axes[0]
 
     for ax, i in zip(axes, idx):
         sac = sacs[i]
-        ax.imshow(sac, cmap="viridis", interpolation="gaussian")
+        ax.imshow(sac, cmap=cmap, interpolation="gaussian")
+        if draw_peak_connections:
+            center = np.asarray(find_global_maxima(sac), dtype=float)
+            try:
+                peaks = _nearest_ring_peaks(
+                    center,
+                    find_local_maxima(sac),
+                    n_peaks=n_peaks,
+                )
+                ax.scatter(center[1], center[0], s=24, c="white", edgecolors="black")
+                for peak in peaks:
+                    ax.plot(
+                        [center[1], peak[1]],
+                        [center[0], peak[0]],
+                        color=connection_color,
+                        lw=1.4,
+                        alpha=0.9,
+                    )
+                    ax.scatter(peak[1], peak[0], s=18, c=connection_color, edgecolors="none")
+            except RuntimeError:
+                pass
         title = f"idx {i}\nscale={scales_cm[i]:.2f} cm\nori={orientations_deg[i]:.2f} deg"
+        if scores is not None and i < len(scores):
+            title += f"\nscore={scores[i]:.3f}"
+        ax.set_title(title, fontsize=9)
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+    fig.tight_layout()
+    return fig, axes
+
+
+def plot_grid_map_examples_with_scale_orientation(
+    grid_maps,
+    scales_cm,
+    orientations_deg=None,
+    scores=None,
+    n_examples=6,
+    selection="first",
+    cmap="jet",
+):
+    """
+    Plot grid-map examples with the same scale-based selection as SAC examples.
+
+    ``grid_maps`` should be aligned to ``scales_cm`` and typically comes from
+    ``results/<model>/<run>/grid_maps.npy``.
+    """
+    import matplotlib.pyplot as plt
+
+    idx = _select_cells_by_scale(scales_cm, n_examples=n_examples, selection=selection)
+    n = len(idx)
+    fig, axes = plt.subplots(1, n, figsize=(3.2 * n, 3.2), squeeze=False)
+    axes = axes[0]
+
+    for ax, i in zip(axes, idx):
+        rm = np.asarray(grid_maps[i], dtype=float)
+        rm = (rm - np.nanmin(rm)) / (np.nanmax(rm) - np.nanmin(rm) + 1e-8)
+        ax.imshow(rm, cmap=cmap, origin="lower", interpolation="gaussian")
+
+        title = f"idx {i}\nscale={scales_cm[i]:.2f} cm"
+        if orientations_deg is not None and i < len(orientations_deg):
+            title += f"\nori={orientations_deg[i]:.2f} deg"
         if scores is not None and i < len(scores):
             title += f"\nscore={scores[i]:.3f}"
         ax.set_title(title, fontsize=9)
