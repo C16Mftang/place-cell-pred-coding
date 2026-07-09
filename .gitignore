@@ -24,3 +24,5 @@ config_rnn2.yaml
 config_rnn3.yaml
 config_tpc2.yaml
 /logs/*
+/notebooks/*/*
+/review_response/*

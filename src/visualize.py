@@ -159,7 +159,7 @@ def compute_grid_scores(lo_res, rate_map_lo_res, options, half=False, srted=True
     scorer = GridScorer(lo_res_w, lo_res_h, coord_range, masks_parameters)
 
     score_60, score_90, max_60_mask, max_90_mask, sac, max_60_ind = zip(
-        *[scorer.get_scores(rm) for rm in tqdm(rate_map_lo_res)]
+        *[scorer.get_scores(rm) for rm in (rate_map_lo_res)]
     )
 
     idx = np.flip(np.argsort(score_60))
@@ -209,6 +209,39 @@ def _compute_ratemaps_from_samples(xs, ys, g, options, res):
                 activations[:, x, y] /= counts[x, y]
 
     return activations
+
+
+def _compute_ratemaps_from_samples_bincount(xs, ys, g, options, res):
+    """Fast equivalent of `_compute_ratemaps_from_samples` using np.bincount."""
+    Ng = g.shape[1]
+    scaler = options.box_height / options.box_width
+    res_h = int(res * scaler)
+    res_w = int(res)
+
+    x_float = (xs + options.box_width / 2) / options.box_width * res_w
+    y_float = (ys + options.box_height / 2) / options.box_height * res_h
+
+    valid = (0 <= x_float) & (x_float < res_w) & (0 <= y_float) & (y_float < res_h)
+    x_idx = x_float[valid].astype(int)
+    y_idx = y_float[valid].astype(int)
+    g = g[valid]
+
+    flat_idx = x_idx * res_h + y_idx
+    n_bins = res_w * res_h
+    counts = np.bincount(flat_idx, minlength=n_bins).astype(float)
+    activations = np.zeros((Ng, n_bins), dtype=float)
+
+    for c in range(Ng):
+        activations[c] = np.bincount(
+            flat_idx,
+            weights=g[:, c],
+            minlength=n_bins,
+        )
+
+    nonzero = counts > 0
+    activations[:, nonzero] /= counts[nonzero]
+
+    return activations.reshape(Ng, res_w, res_h)
 
 
 def classify_grid_cells_by_shuffled_null(
@@ -293,7 +326,7 @@ def classify_grid_cells_by_shuffled_null(
         raise ValueError("Not enough samples to perform shuffle test.")
 
     # Observed scores
-    rate_maps = _compute_ratemaps_from_samples(xs, ys, g, options, lo_res)
+    rate_maps = _compute_ratemaps_from_samples_bincount(xs, ys, g, options, lo_res)
     _, unsrt_scores, _ = compute_grid_scores(lo_res, rate_maps, options, srted=False)
     scores = np.asarray(unsrt_scores, dtype=float)
 
@@ -310,7 +343,7 @@ def classify_grid_cells_by_shuffled_null(
         for start in range(0, Ng, chunk):
             end = min(start + chunk, Ng)
             g_shift_chunk = np.roll(g[:, start:end], shift=shift, axis=0)
-            rm_shift = _compute_ratemaps_from_samples(
+            rm_shift = _compute_ratemaps_from_samples_bincount(
                 xs, ys, g_shift_chunk, options, lo_res
             )
             _, shuf_scores, _ = compute_grid_scores(lo_res, rm_shift, options, srted=False)
@@ -455,7 +488,8 @@ def compute_grid_metrics(autocorr, env_size=1.6, size_thresh_scaler=0.25, scale_
     # 2. Find the global maximum
     center_peak = find_global_maxima(autocorr)
     # 3. Compute the grid scale as the distance between the center and the nearest peak
-    grid_scale_px, grid_scale_m = get_grid_scale(peaks, center_peak, pixel_to_meter, method=scale_method)
+    grid_scale_px = get_grid_scale(peaks, center_peak, method=scale_method)
+    grid_scale_m = grid_scale_px * pixel_to_meter
     # 4. Find the central field pixels
     central_field_coords = find_central_field_pixels(autocorr, *center_peak, size_thresh_scaler)
     # 5. Compute the grid size as the diameter of the central field
